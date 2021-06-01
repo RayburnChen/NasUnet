@@ -32,8 +32,8 @@ searching:
         lr: 3.0e-4
         weight_decay: 5.0e-3
     loss:
-#        name: 'dice_loss'
-        name: 'cross_entropy'
+        name: 'dice_loss'
+#        name: 'cross_entropy'
         size_average: False
         aux_weight:
     resume:
@@ -54,8 +54,8 @@ training:
         lr: 1.0e-3
         weight_decay: 5.0e-4
     loss:
-#        name: 'dice_loss'
-        name: 'cross_entropy'
+        name: 'dice_loss'
+#        name: 'cross_entropy'
         aux_weight: 0
     backbone:
     lr_schedule:
