@@ -173,6 +173,7 @@ class SearchNetwork(object):
         self.train_loss_meter = average_meter()
         self.val_loss_meter = average_meter()
         run_start = time.time()
+
         for epoch in range(self.start_epoch, self.cfg['searching']['epoch']):
             self.epoch = epoch
 

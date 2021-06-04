@@ -110,6 +110,11 @@ class average_meter(object):
     def mloss(self):
         return self.avg
 
+    @property
+    def mperc(self):
+        return 100.0 * self.avg
+
+
 def recursive_glob(rootdir=".", suffix=""):
     """Performs recursive glob with given suffix and rootdir
         :param rootdir is the root directory

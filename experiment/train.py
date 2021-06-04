@@ -327,7 +327,7 @@ class Network(object):
 
             if step % self.cfg['training']['report_freq'] == 0:
                 if self.show_dice_coeff:
-                    mdice_coeff = self.train_dice_coeff_meter.mloss
+                    mdice_coeff = self.train_dice_coeff_meter.mperc
                     self.logger.info('dice coeff: {}'.format(mdice_coeff))
 
                 self.logger.info('train loss %03d %e | epoch [%d] / [%d]', step,
@@ -357,11 +357,6 @@ class Network(object):
 
                 self.metric_val.update(target, predicts[0])
 
-                # TODO
-                pixAcc, mIoU = self.metric_val.get()
-                self.logger.info('val loss: {}, pixAcc: {}, mIoU: {}'.format(
-                        self.val_loss_meter.mloss, pixAcc, mIoU))
-
                 # calc dice coeff
                 if self.show_dice_coeff:
                     dice_coeff = dice_coefficient(predicts[0], target)
@@ -371,7 +366,7 @@ class Network(object):
                     pixAcc, mIoU = self.metric_val.get()
 
                     if self.show_dice_coeff:
-                        mdice_coeff = self.val_dice_coeff_meter.mloss
+                        mdice_coeff = self.val_dice_coeff_meter.mperc
                         self.logger.info('dice coeff: {}'.format(mdice_coeff))
 
                     self.logger.info('val loss: {}, pixAcc: {}, mIoU: {}'.format(
@@ -396,7 +391,7 @@ class Network(object):
         self.writer.add_scalar('Val/mIoU', mIoU, self.epoch)
         self.writer.add_scalar('Val/loss', self.val_loss_meter.mloss, self.epoch)
         if self.show_dice_coeff:
-            mdice_coeff = self.val_dice_coeff_meter.mloss
+            mdice_coeff = self.val_dice_coeff_meter.mperc
             self.writer.add_scalar('Val/dice_coeff', mdice_coeff, self.epoch)
 
         # for early-stopping
@@ -412,7 +407,7 @@ class Network(object):
         if self.show_dice_coeff: # DSC first
             if self.best_dice_coeff < mdice_coeff:
                 self.best_dice_coeff = mdice_coeff
-                self.best_mIoU =  mIoU if self.best_mIoU < mIoU else self.best_mIoU
+                self.best_mIoU = mIoU if self.best_mIoU < mIoU else self.best_mIoU
                 self.save_best = True
         elif self.best_mIoU < mIoU: # mIoU is the major metric if no use dice loss
             self.best_mIoU = mIoU
