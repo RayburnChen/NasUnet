@@ -12,6 +12,7 @@ searching:
     depth: 4
     epoch: 300
     batch_size: 20
+#    batch_size: 3
     report_freq: 20
     n_workers: 2
     alpha_begin: 10
@@ -32,8 +33,8 @@ searching:
         lr: 3.0e-4
         weight_decay: 5.0e-3
     loss:
-#        name: 'dice_loss'
-        name: 'cross_entropy'
+        name: 'dice_loss'
+#        name: 'bce_dice_loss'
         size_average: False
         aux_weight:
     resume:
@@ -41,21 +42,22 @@ training:
     geno_type: NASUNET
     init_channels: 30
     depth: 5
-    epoch: 600
+    epoch: 3600
     batch_size: 30
+#    batch_size: 3
     report_freq: 10
     n_workers: 2
     multi_gpus: False
     double_down_channel: False
     grad_clip: 3
-    max_patience: 100
+    max_patience: 3600
     model_optimizer:
         name: 'adam'
         lr: 1.0e-3
         weight_decay: 5.0e-4
     loss:
-#        name: 'dice_loss'
-        name: 'cross_entropy'
+        name: 'dice_loss'
+#        name: 'bce_dice_loss'
         aux_weight: 0
     backbone:
     lr_schedule:
