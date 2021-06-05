@@ -43,7 +43,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Display param')
     parser.add_argument('--images', help='Also displays images from validation set', action='store_true',
                         default=True)
-    parser.add_argument('--path', nargs='?', type=str, default='../logs/nas-unet/train/train-20190104-1915/',
+    parser.add_argument('--path', nargs='?', type=str, default='../logs/nas-unet/train/promise12/20210605-130840/',
                         help='Configuration file to use')
     args = parser.parse_args()
     main(args)

@@ -35,6 +35,8 @@ class SegmentationLosses(nn.Module):
             return self._bce_loss(inputs, targets) + self._dice_loss(inputs, targets)
         elif self.name == 'bce_iou_loss':
             return self._bce_loss(inputs, targets) + self._iou_loss(inputs, targets)
+        elif self.name == 'cross_entropy':
+            return F.cross_entropy(inputs, targets)
         else:
             raise NotImplementedError
 

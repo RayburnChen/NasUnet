@@ -3,12 +3,13 @@ from util.prim_ops_set import *
 from util.utils import consistent_dim
 from util.genotype import CellLinkDownPos, CellLinkUpPos, CellPos
 
+
 class MixedOp(nn.Module):
 
     def __init__(self, c, stride, use_transpose=False):
         super(MixedOp, self).__init__()
         self._ops = nn.ModuleList()
-        if stride >= 2: # down or up edge
+        if stride >= 2:  # down or up edge
             primitives = CellLinkUpPos if use_transpose else CellLinkDownPos
             self._op_type = 'up_or_down'
         else:
@@ -29,6 +30,7 @@ class MixedOp(nn.Module):
             rst = sum(w * op(x) for w, op in zip(weights1, self._ops))
 
         return rst
+
 
 class Cell(nn.Module):
 
@@ -52,12 +54,15 @@ class Cell(nn.Module):
 
         # inp2changedim = 2 if cell_type == 'down' else 1
         idx_up_or_down_start = 0 if cell_type == 'down' else 1
+        # i=0,1,2
+        # j=2,3,4
+        # _ops=2+3+4=9
         for i in range(self._meta_node_num):
-            for j in range(self._input_node_num + i): # the input id for remaining meta-node
-                stride = 2 if j < 2 and j >= idx_up_or_down_start else 1 # only the first input is reduction
+            for j in range(self._input_node_num + i):  # the input id for remaining meta-node
+                stride = 2 if j < 2 and j >= idx_up_or_down_start else 1  # only the first input is reduction
                 # down cell: |_|_|_|_|*|_|_|*|*|_|_|*|*|*| where _ indicate down operation
                 # up cell:   |*|_|*|*|_|*|_|*|*|*|_|*|*|*| where _ indicate up operation
-                op = MixedOp(c, stride, use_transpose=True) if cell_type=='up' else MixedOp(c, stride)
+                op = MixedOp(c, stride, use_transpose=True) if cell_type == 'up' else MixedOp(c, stride)
                 self._ops.append(op)
 
     def forward(self, s0, s1, weight1, weight2):
@@ -74,9 +79,9 @@ class Cell(nn.Module):
             # handle the un-consistent dimension
             tmp_list = []
             for j, h in enumerate(states):
-                tmp_list += [self._ops[offset+j](h, weight1[offset+j], weight2[offset+j])]
+                tmp_list += [self._ops[offset + j](h, weight1[offset + j], weight2[offset + j])]
             s = sum(consistent_dim(tmp_list))
-            #s = sum(self._ops[offset+j](h, weight1[offset+j], weight2[offset+j]) for j, h in enumerate(states))
+            # s = sum(self._ops[offset+j](h, weight1[offset+j], weight2[offset+j]) for j, h in enumerate(states))
             offset += len(states)
             states.append(s)
 
