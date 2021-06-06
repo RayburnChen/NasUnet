@@ -80,9 +80,10 @@ class Cell(nn.Module):
             tmp_list = []
             for j, h in enumerate(states):
                 tmp_list += [self._ops[offset + j](h, weight1[offset + j], weight2[offset + j])]
-            s = sum(consistent_dim(tmp_list))
-            # s = sum(self._ops[offset+j](h, weight1[offset+j], weight2[offset+j]) for j, h in enumerate(states))
+
+            s = sum(tmp_list)
             offset += len(states)
             states.append(s)
 
+        # concat last 3 states
         return torch.cat(states[-self._multiplier:], dim=1)

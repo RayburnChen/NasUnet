@@ -2,6 +2,7 @@ import threading
 import torch
 import numpy as np
 import torch.nn.functional as F
+from torch import Tensor
 
 SMOOTH = np.spacing(1)
 
@@ -12,24 +13,28 @@ class SegmentationMetric(object):
     def __init__(self, nclass):
         self.nclass = nclass
         self.lock = threading.Lock()
+        self.acc = AverageMeter()
+        self.iou = AverageMeter()
+        self.dsc = AverageMeter()
         self.reset()
 
+    def evaluate_worker(self, label, pred):
+        mean_acc = mean_pix_accuracy(pred, label)
+        mean_iou = mean_intersection_union(pred, label, self.nclass)
+        mean_dsc = dice_coefficient(pred, label)
+        with self.lock:
+            self.acc.update(mean_acc)
+            self.iou.update(mean_iou)
+            self.dsc.update(mean_dsc)
+        return
+
     def update(self, labels, preds):
-        def evaluate_worker(self, label, pred):
-            mean_acc = mean_pix_accuracy(pred, label)
-            mean_iou = mean_intersection_union(pred, label, self.nclass)
-            with self.lock:
-                self.total_mean_acc += mean_acc
-                self.count_mean_acc += 1
-                self.total_mean_iou += mean_iou
-                self.count_mean_iou += 1
-            return
 
         if isinstance(preds, torch.Tensor):
-            evaluate_worker(self, labels, preds)
+            self.evaluate_worker(labels, preds)
         elif isinstance(preds, (list, tuple)):
-            threads = [threading.Thread(target=evaluate_worker,
-                                        args=(self, label, pred),
+            threads = [threading.Thread(target=self.evaluate_worker,
+                                        args=(label, pred),
                                         )
                        for (label, pred) in zip(labels, preds)]
             for thread in threads:
@@ -40,16 +45,41 @@ class SegmentationMetric(object):
             raise NotImplemented
 
     def get(self):
-        pixAcc = 100.0 * self.total_mean_acc / self.count_mean_acc
-        mIoU = 100.0 * self.total_mean_iou / self.count_mean_iou
-        return pixAcc, mIoU
+        pixAcc = self.acc.mperc()
+        mIoU = self.iou.mperc()
+        dice = self.dsc.mperc()
+        return pixAcc, mIoU, dice
 
     def reset(self):
-        self.total_mean_iou = 0
-        self.count_mean_iou = 0
-        self.total_mean_acc = 0
-        self.count_mean_acc = 0
+        self.acc.reset()
+        self.iou.reset()
+        self.dsc.reset()
         return
+
+
+class AverageMeter(object):
+    """Computes and stores the average and current value"""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
+
+    def mloss(self):
+        return self.avg
+
+    def mperc(self):
+        return 100.0 * self.avg
 
 
 def batch_pix_accuracy(output, target):
@@ -199,13 +229,12 @@ def numpy_dice(y_true, y_pred, axis=None, smooth=1.0):
 
 
 def dice_coefficient(inputs, target):
-
     predict = torch.argmax(inputs, dim=1)  # BATCH x H x W
 
     intersection = (predict & target).float().sum((1, 2))  # Will be zero if Truth=0 or Prediction=0
     den1 = predict.float().sum((1, 2))  # Will be zero if Truth=0 or Prediction=0
     den2 = target.float().sum((1, 2))  # Will be zzero if both are 0
 
-    dice = (2.*intersection + SMOOTH) / (den1 + den2 + SMOOTH)  # We smooth our devision to avoid 0/0
+    dice = (2. * intersection + SMOOTH) / (den1 + den2 + SMOOTH)  # We smooth our devision to avoid 0/0
 
     return dice.mean()

@@ -65,7 +65,7 @@ class SearchULikeCNN(nn.Module):
 
         # encoder pathway
         down_cs.append(s0)  # the s0 has original image size!!
-        down_cs.append(s1)
+        down_cs.append(s1)  # the s1 has 1/2 image size!!
         for i, cell in enumerate(self.down_cells):
             # Sharing a global N*M weights matrix
             # where M : normal + down

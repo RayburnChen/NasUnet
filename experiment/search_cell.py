@@ -15,7 +15,7 @@ sys.path.append('..')
 from util.loss.loss import SegmentationLosses
 from util.datasets import get_dataset, datasets
 from util.utils import get_logger, save_checkpoint
-from util.utils import average_meter, calc_time
+from util.utils import calc_time
 from util.utils import get_gpus_memory_info, calc_parameters_count
 from util.optimizers import get_optimizer
 from util.metrics import *
@@ -170,8 +170,8 @@ class SearchNetwork(object):
         # Setup Metrics
         self.metric_train = SegmentationMetric(self.n_classes)
         self.metric_val = SegmentationMetric(self.n_classes)
-        self.train_loss_meter = average_meter()
-        self.val_loss_meter = average_meter()
+        self.train_loss_meter = AverageMeter()
+        self.val_loss_meter = AverageMeter()
         run_start = time.time()
 
         for epoch in range(self.start_epoch, self.cfg['searching']['epoch']):
@@ -179,7 +179,7 @@ class SearchNetwork(object):
 
             # update scheduler
             self.scheduler.step()
-            self.logger.info('epoch %d / %d lr %e', self.epoch,
+            self.logger.info('Epoch %d / %d lr %e', self.epoch,
                              self.cfg['searching']['epoch'], self.scheduler.get_lr()[-1])
 
             # get genotype
@@ -266,11 +266,11 @@ class SearchNetwork(object):
                                      self.cfg['searching']['grad_clip'])
 
             if step % self.cfg['searching']['report_freq'] == 0:
-                pixAcc, mIoU = self.metric_train.get()
-                self.logger.info('train %03d %e | epoch[%d]/[%d]', step+1,
+                pixAcc, mIoU, dice = self.metric_train.get()
+                self.logger.info('Train %03d %e | epoch[%d]/[%d]', step+1,
                                  self.train_loss_meter.avg, self.epoch, self.cfg['searching']['epoch'])
                 tbar.set_description('Train loss: %.3f' % (self.train_loss_meter.avg))
-                self.logger.info('pixAcc: %.3f; mIoU: %.5f' % (pixAcc, mIoU))
+                self.logger.info('Train pixAcc: %.3f; mIoU: %.5f; dice: %.5f' % (pixAcc, mIoU, dice))
 
             # Update the network parameters
             self.model_optimizer.step()
@@ -291,16 +291,18 @@ class SearchNetwork(object):
 
                 self.metric_val.update(target, predicts)
                 if step % self.cfg['searching']['report_freq'] == 0:
-                    pixAcc, mIoU = self.metric_val.get()
+                    pixAcc, mIoU, dice = self.metric_val.get()
                     loss_v = self.val_loss_meter.avg
-                    self.logger.info('Val loss: %.6f; pixAcc: %.3f; mIoU: %.5f' % (loss_v, pixAcc, mIoU))
-                    tbar.set_description('Val loss: %.6f; pixAcc: %.3f; mIoU: %.5f' % (loss_v, pixAcc, mIoU))
+                    self.logger.info('Val loss: %.6f; pixAcc: %.3f; mIoU: %.5f; dice: %.5f' % (loss_v, pixAcc, mIoU, dice))
+                    tbar.set_description('Val loss: %.6f; pixAcc: %.3f; mIoU: %.5f; dice: %.5f' % (loss_v, pixAcc, mIoU, dice))
 
-        pixAcc, mIoU = self.metric_val.get()
-        cur_loss = self.val_loss_meter.mloss
+        pixAcc, mIoU, dice = self.metric_val.get()
+        cur_loss = self.val_loss_meter.mloss()
         self.writer.add_scalar('Val/pixAcc', pixAcc, self.epoch)
         self.writer.add_scalar('Val/mIoU', mIoU, self.epoch)
+        self.writer.add_scalar('Val/dice', dice, self.epoch)
         self.writer.add_scalar('Val/loss', cur_loss, self.epoch)
+
 
 if __name__ == '__main__':
     search_network = SearchNetwork()

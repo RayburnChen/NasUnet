@@ -5,12 +5,13 @@ import shutil
 import subprocess
 import torch
 import torch.nn
+import math
 import numpy as np
 import cv2
 from collections import OrderedDict
 from torchvision.utils import make_grid
 from util.encoder_colors import get_mask_pallete
-
+from torch.nn.functional import interpolate
 
 
 def get_same_padding(kernel_size):
@@ -23,6 +24,7 @@ def get_same_padding(kernel_size):
     assert kernel_size % 2 > 0, 'kernel size should be odd number'
     return kernel_size // 2
 
+
 def shuffle_layer(x, groups):
     batchsize, num_channels, height, width = x.data.size()
     channels_per_group = num_channels // groups
@@ -33,6 +35,7 @@ def shuffle_layer(x, groups):
     # flatten
     x = x.view(batchsize, -1, height, width)
     return x
+
 
 class running_score(object):
     def __init__(self, n_classes):
@@ -88,32 +91,6 @@ class running_score(object):
     def reset(self):
         self.confusion_matrix = np.zeros((self.n_classes, self.n_classes))
 
-class average_meter(object):
-    """Computes and stores the average and current value"""
-
-    def __init__(self):
-        self.reset()
-
-    def reset(self):
-        self.val = 0
-        self.avg = 0
-        self.sum = 0
-        self.count = 0
-
-    def update(self, val, n=1):
-        self.val = val
-        self.sum += val * n
-        self.count += n
-        self.avg = self.sum / self.count
-
-    @property
-    def mloss(self):
-        return self.avg
-
-    @property
-    def mperc(self):
-        return 100.0 * self.avg
-
 
 def recursive_glob(rootdir=".", suffix=""):
     """Performs recursive glob with given suffix and rootdir
@@ -127,11 +104,12 @@ def recursive_glob(rootdir=".", suffix=""):
         if filename.endswith(suffix)
     ]
 
+
 def calc_time(seconds):
     m, s = divmod(seconds, 60)
     h, m = divmod(m, 60)
     t, h = divmod(h, 24)
-    return {'day':t, 'hour':h, 'minute':m, 'second':int(s)}
+    return {'day': t, 'hour': h, 'minute': m, 'second': int(s)}
 
 
 def alpha_blend(input_image, segmentation_mask, alpha=0.5):
@@ -145,6 +123,7 @@ def alpha_blend(input_image, segmentation_mask, alpha=0.5):
     blended = input_image * alpha + segmentation_mask * (1 - alpha)
     return blended
 
+
 def convert_state_dict(state_dict):
     """Converts a state dict saved from a dataParallel module to normal
        module state_dict inplace
@@ -157,6 +136,7 @@ def convert_state_dict(state_dict):
         new_state_dict[name] = v
     return new_state_dict
 
+
 def get_logger(log_dir):
     create_exp_dir(log_dir)
     log_format = '%(asctime)s %(message)s'
@@ -168,6 +148,7 @@ def get_logger(log_dir):
     logger.addHandler(fh)
     return logger
 
+
 def save_checkpoint(state, is_best, save):
     filename = os.path.join(save, 'checkpint.pth.tar')
     torch.save(state, filename)
@@ -175,21 +156,25 @@ def save_checkpoint(state, is_best, save):
         best_filename = os.path.join(save, 'model_best.pth.tar')
         shutil.copyfile(filename, best_filename)
 
+
 def get_gpus_memory_info():
     """Get the maximum free usage memory of gpu"""
-    rst = subprocess.run('nvidia-smi -q -d Memory',stdout=subprocess.PIPE, shell=True).stdout.decode('utf-8')
+    rst = subprocess.run('nvidia-smi -q -d Memory', stdout=subprocess.PIPE, shell=True).stdout.decode('utf-8')
     rst = rst.strip().split('\n')
     memory_available = [int(line.split(':')[1].split(' ')[1]) for line in rst if 'Free' in line][::2]
     id = int(np.argmax(memory_available))
     return id, memory_available
 
+
 def calc_parameters_count(model):
-    return np.sum(np.prod(v.size()) for v in model.parameters())/1e6
+    return np.sum(np.prod(v.size()) for v in model.parameters()) / 1e6
+
 
 def create_exp_dir(path, desc='Experiment dir: {}'):
     if not os.path.exists(path):
         os.makedirs(path)
     print(desc.format(path))
+
 
 def unique(ar, return_index=False, return_inverse=False, return_counts=False):
     ar = np.asanyarray(ar).flatten()
@@ -242,8 +227,8 @@ def colorEncode(labelmap, colors, mode='BGR'):
         if label < 0:
             continue
         labelmap_rgb += (labelmap == label)[:, :, np.newaxis] * \
-            np.tile(colors[label],
-                    (labelmap.shape[0], labelmap.shape[1], 1))
+                        np.tile(colors[label],
+                                (labelmap.shape[0], labelmap.shape[1], 1))
 
     if mode == 'BGR':
         return labelmap_rgb[:, :, ::-1]
@@ -281,6 +266,7 @@ def intersectionAndUnion(imPred, imLab, numClass):
 
     return (area_intersection, area_union)
 
+
 def one_hot_encoding(input, c):
     """
     One-hot encoder: Converts NxHxW label image to NxCxHxW, where each label is stored in a separate channel
@@ -297,16 +283,21 @@ def one_hot_encoding(input, c):
     result.scatter_(1, input.unsqueeze(1), 1)
     return result
 
+
 from torch.nn.parallel._functions import Broadcast
+
+
 def broadcast_list(li, device_ids):
-    l_copies = Broadcast.apply(device_ids, *li) # default broadcast not right?
-    l_copies = [l_copies[i:i+len(li)]
+    l_copies = Broadcast.apply(device_ids, *li)  # default broadcast not right?
+    l_copies = [l_copies[i:i + len(li)]
                 for i in range(0, len(l_copies), len(li))]
     return l_copies
+
 
 def weights_init(m):
     if isinstance(m, torch.nn.Conv2d):
         torch.nn.init.kaiming_normal_(m.weight)
+
 
 def store_images(input, predicts, target, dataset='promise12'):
     """
@@ -322,15 +313,15 @@ def store_images(input, predicts, target, dataset='promise12'):
         channel = input[i].shape[0]
         pred = torch.max(predicts[i], 0)[1].cpu().numpy()
         mask2s = get_mask_pallete(pred, dataset, channel=channel)
-        if channel == 3: # rgb
-            mask2s = torch.from_numpy(np.array(mask2s).transpose([2,0,1])).float()
-        else: # gray
-            mask2s = torch.from_numpy(np.expand_dims(np.array(mask2s),axis=0)).float()
+        if channel == 3:  # rgb
+            mask2s = torch.from_numpy(np.array(mask2s).transpose([2, 0, 1])).float()
+        else:  # gray
+            mask2s = torch.from_numpy(np.expand_dims(np.array(mask2s), axis=0)).float()
 
         gt = target[i].cpu().numpy()
         target2s = get_mask_pallete(gt, dataset, channel=channel)
         if channel == 3:
-            target2s = torch.from_numpy(np.array(target2s).transpose([2,0,1])).float()
+            target2s = torch.from_numpy(np.array(target2s).transpose([2, 0, 1])).float()
         else:
             target2s = torch.from_numpy(np.expand_dims(np.array(target2s), axis=0)).float()
 
@@ -338,7 +329,7 @@ def store_images(input, predicts, target, dataset='promise12'):
     grid_image = make_grid(grid_image_list, normalize=True, scale_each=True)
     return grid_image
 
-from torch.nn.functional import interpolate
+
 def consistent_dim(states):
     # handle the un-consistent dimension
     # Todo: zbabby
@@ -351,6 +342,7 @@ def consistent_dim(states):
             w_max = ss.size()[3]
     return [interpolate(ss, (h_max, w_max)) for ss in states]
 
+
 def resize_pred_to_val(y_pred, shape):
     """
     :param y_pred: a list of numpy array: [n,h,w]
@@ -358,22 +350,21 @@ def resize_pred_to_val(y_pred, shape):
     :return: a list of numpy array: [n x h_new x w_new]
     """
     row = shape[1]
-    col =  shape[2]
+    col = shape[2]
     resized_pred = np.zeros(shape)
     for mm in range(len(y_pred)):
-        resized_pred[mm,:,:] =  cv2.resize( y_pred[mm,:,:,0], (row, col), interpolation=cv2.INTER_NEAREST)
+        resized_pred[mm, :, :] = cv2.resize(y_pred[mm, :, :, 0], (row, col), interpolation=cv2.INTER_NEAREST)
 
     return resized_pred.astype(int)
 
 
-import math
 # labels_dict : {ind_label: count_label}
 # mu : parameter to tune
 def create_class_weight(list_weight, mu=0.15):
     total = np.sum(list_weight)
     new_weight = []
     for weight in list_weight:
-        score = math.log(mu*total/float(weight))
+        score = math.log(mu * total / float(weight))
         weight = score if score > 1.0 else 1.0
         new_weight += [weight]
 
