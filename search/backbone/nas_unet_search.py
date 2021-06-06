@@ -44,7 +44,7 @@ class SearchULikeCNN(nn.Module):
             down_cs_nfilters += [c_prev]
 
         # create the decoder pathway and add to a list
-        # Todo: the prev_prev channel and prev channel is the same for decoder pathway
+        # TODO: the prev_prev channel and prev channel is the same for decoder pathway
         for i in range(depth + 1):
             c_prev_prev = down_cs_nfilters[-(i + 2)]
             up_cell = Cell(meta_node_num, c_prev_prev, c_prev, c_curr, cell_type='up')

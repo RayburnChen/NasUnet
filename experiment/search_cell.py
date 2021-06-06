@@ -14,7 +14,7 @@ import torchvision.transforms as transform
 sys.path.append('..')
 from util.loss.loss import SegmentationLosses
 from util.datasets import get_dataset, datasets
-from util.utils import get_logger, save_checkpoint
+from util.utils import get_logger, save_checkpoint, gpu_memory
 from util.utils import calc_time
 from util.utils import get_gpus_memory_info, calc_parameters_count
 from util.optimizers import get_optimizer
@@ -22,6 +22,7 @@ from util.metrics import *
 from search.backbone.nas_unet_search import NasUnetSearch, Architecture
 
 from tensorboardX import SummaryWriter
+
 
 class SearchNetwork(object):
 
@@ -35,7 +36,7 @@ class SearchNetwork(object):
 
     def _init_configure(self):
         parser = argparse.ArgumentParser(description='config')
-        parser.add_argument('--config', nargs='?',type=str,default='../configs/nas_unet/nas_unet_voc.yml',
+        parser.add_argument('--config', nargs='?', type=str, default='../configs/nas_unet/nas_unet_voc.yml',
                             help='Configuration file to use')
 
         self.args = parser.parse_args()
@@ -45,10 +46,10 @@ class SearchNetwork(object):
             print('load configure file at {}'.format(self.args.config))
 
     def _init_logger(self):
-        log_dir = '../logs/nasunet/search' + '/{}'.format(self.cfg['data']['dataset']) +\
+        log_dir = '../logs/nasunet/search' + '/{}'.format(self.cfg['data']['dataset']) + \
                   '/search-{}'.format(time.strftime('%Y%m%d-%H%M%S'))
         self.logger = get_logger(log_dir)
-        print('RUNDIR: {}'.format(log_dir))
+        self.logger.info('RUNDIR: {}'.format(log_dir))
         shutil.copy(self.args.config, log_dir)
         self.logger.info('Nas-Search')
         self.save_path = log_dir
@@ -60,7 +61,7 @@ class SearchNetwork(object):
         self.logger.info('seed is {}'.format(self.cfg.get('seed', 1337)))
         np.random.seed(self.cfg.get('seed', 1337))
         torch.manual_seed(self.cfg.get('seed', 1337))
-        if self.cfg['searching']['gpu'] and torch.cuda.is_available() :
+        if self.cfg['searching']['gpu'] and torch.cuda.is_available():
             self.device_id, _ = get_gpus_memory_info()
             self.device = torch.device('cuda:{}'.format(0 if self.cfg['searching']['multi_gpus'] else self.device_id))
             torch.cuda.manual_seed(self.cfg.get('seed', 1337))
@@ -87,7 +88,7 @@ class SearchNetwork(object):
 
         self.valid_queue = data.DataLoader(trainset, batch_size=self.cfg['searching']['batch_size'],
                                            sampler=torch.utils.data.sampler.SubsetRandomSampler(
-                                               indices[split:num_train]),**kwargs)
+                                               indices[split:num_train]), **kwargs)
 
     def _init_model(self):
 
@@ -121,17 +122,18 @@ class SearchNetwork(object):
         # Setup optimizer, lr_scheduler and loss function for model
         optimizer_cls1 = get_optimizer(self.cfg, phase='searching', optimizer_type='model_optimizer')
         optimizer_params1 = {k: v for k, v in self.cfg['searching']['model_optimizer'].items()
-                            if k != 'name'}
+                             if k != 'name'}
 
         self.model_optimizer = optimizer_cls1(self.model.parameters(), **optimizer_params1)
         self.logger.info("Using model optimizer {}".format(self.model_optimizer))
 
-        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.model_optimizer, self.cfg['searching']['epoch'], eta_min=1.0e-3)
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.model_optimizer,
+                                                                    self.cfg['searching']['epoch'], eta_min=1.0e-3)
 
         # Setup optimizer, lr_scheduler and loss function for architecture
         optimizer_cls2 = get_optimizer(self.cfg, phase='searching', optimizer_type='arch_optimizer')
         optimizer_params2 = {k: v for k, v in self.cfg['searching']['arch_optimizer'].items()
-                            if k != 'name'}
+                             if k != 'name'}
 
         self.arch_optimizer = optimizer_cls2(self.model.alphas(), **optimizer_params2)
 
@@ -211,6 +213,9 @@ class SearchNetwork(object):
             # valid the model
             self.infer()
 
+            if self.epoch % self.cfg['searching']['report_freq'] == 0:
+                self.logger.info('GPU memory total:{}, reserved:{}, allocated:{}, waiting:{}'.format(*gpu_memory()))
+
             save_checkpoint({
                 'epoch': epoch + 1,
                 'dur_time': self.dur_time + time.time() - run_start,
@@ -221,9 +226,9 @@ class SearchNetwork(object):
                 'model_optimizer': self.model_optimizer.state_dict(),
                 'alphas_dict': self.model.alphas_dict(),
                 'scheduler': self.scheduler.state_dict()
-            },False, self.save_path)
+            }, False, self.save_path)
             self.logger.info('save checkpoint (epoch %d) in %s  dur_time: %s'
-                        , epoch, self.save_path, calc_time(self.dur_time + time.time() - run_start))
+                             , epoch, self.save_path, calc_time(self.dur_time + time.time() - run_start))
 
             self.metric_train.reset()
             self.metric_val.reset()
@@ -267,7 +272,7 @@ class SearchNetwork(object):
 
             if step % self.cfg['searching']['report_freq'] == 0:
                 pixAcc, mIoU, dice = self.metric_train.get()
-                self.logger.info('Train %03d %e | epoch[%d]/[%d]', step+1,
+                self.logger.info('Train %03d %e | epoch[%d]/[%d]', step + 1,
                                  self.train_loss_meter.avg, self.epoch, self.cfg['searching']['epoch'])
                 tbar.set_description('Train loss: %.3f' % (self.train_loss_meter.avg))
                 self.logger.info('Train pixAcc: %.3f; mIoU: %.5f; dice: %.5f' % (pixAcc, mIoU, dice))
@@ -293,8 +298,10 @@ class SearchNetwork(object):
                 if step % self.cfg['searching']['report_freq'] == 0:
                     pixAcc, mIoU, dice = self.metric_val.get()
                     loss_v = self.val_loss_meter.avg
-                    self.logger.info('Val loss: %.6f; pixAcc: %.3f; mIoU: %.5f; dice: %.5f' % (loss_v, pixAcc, mIoU, dice))
-                    tbar.set_description('Val loss: %.6f; pixAcc: %.3f; mIoU: %.5f; dice: %.5f' % (loss_v, pixAcc, mIoU, dice))
+                    self.logger.info(
+                        'Val loss: %.6f; pixAcc: %.3f; mIoU: %.5f; dice: %.5f' % (loss_v, pixAcc, mIoU, dice))
+                    tbar.set_description(
+                        'Val loss: %.6f; pixAcc: %.3f; mIoU: %.5f; dice: %.5f' % (loss_v, pixAcc, mIoU, dice))
 
         pixAcc, mIoU, dice = self.metric_val.get()
         cur_loss = self.val_loss_meter.mloss()
@@ -307,19 +314,3 @@ class SearchNetwork(object):
 if __name__ == '__main__':
     search_network = SearchNetwork()
     search_network.run()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

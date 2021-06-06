@@ -8,19 +8,19 @@ data:
     img_rows: 'same'
     img_cols: 'same'
 searching:
-    init_channels: 16
+    init_channels: 32
     depth: 4
     epoch: 300
-    batch_size: 20
-#    batch_size: 3
+    batch_size: 6
+#    batch_size: 2
     report_freq: 20
     n_workers: 2
     alpha_begin: 10
-    max_patience: 100
+    max_patience: 50
     gpu: True
     multi_gpus: True
     sharing_normal: True
-    double_down_channel: False
+    double_down_channel: True
     meta_node_num: 3
     grad_clip: 5
     train_portion: 0.5
@@ -40,17 +40,17 @@ searching:
     resume:
 training:
     geno_type: NASUNET
-    init_channels: 30
+    init_channels: 32
     depth: 5
     epoch: 3600
-    batch_size: 30
-#    batch_size: 3
+    batch_size: 16
+#    batch_size: 2
     report_freq: 10
     n_workers: 2
     multi_gpus: False
-    double_down_channel: False
+    double_down_channel: True
     grad_clip: 3
-    max_patience: 200
+    max_patience: 100
     model_optimizer:
         name: 'adam'
         lr: 1.0e-3

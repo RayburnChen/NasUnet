@@ -12,7 +12,7 @@ import torch.backends.cudnn as cudnn
 sys.path.append('..')
 from util.loss.loss import SegmentationLosses
 from util.datasets import get_dataset
-from util.utils import get_logger, save_checkpoint, calc_time, store_images
+from util.utils import get_logger, save_checkpoint, calc_time, store_images, gpu_memory
 from util.utils import weights_init
 from util.utils import get_gpus_memory_info, calc_parameters_count
 from util.schedulers import get_scheduler
@@ -59,7 +59,7 @@ class Network(object):
         log_dir = '../logs/' + self.model_name + '/train' + '/{}'.format(self.cfg['data']['dataset']) \
                   + '/{}'.format(time.strftime('%Y%m%d-%H%M%S'))
         self.logger = get_logger(log_dir)
-        print('RUNDIR: {}'.format(log_dir))
+        self.logger.info('RUNDIR: {}'.format(log_dir))
         self.logger.info('{}-Train'.format(self.model_name))
         self.save_path = log_dir
         self.save_tbx_log = self.save_path + '/tbx_log'
@@ -86,7 +86,7 @@ class Network(object):
         valset = get_dataset(self.cfg['data']['dataset'], split='val', mode='val')
         # testset = get_dataset(self.cfg['data']['dataset'], split='test', mode='test')
         self.nweight = trainset.class_weight
-        print('dataset weights: {}'.format(self.nweight))
+        self.logger.info('dataset weights: {}'.format(self.nweight))
         self.n_classes = trainset.num_class
         self.batch_size = self.cfg['training']['batch_size']
         kwargs = {'num_workers': self.cfg['training']['n_workers'], 'pin_memory': True}
@@ -245,6 +245,9 @@ class Network(object):
                 self.best_loss, self.best_pixAcc, self.best_mIoU, self.best_dice_coeff
             ))
 
+            if self.epoch % self.cfg['training']['report_freq'] == 0:
+                self.logger.info('GPU memory total:{}, reserved:{}, allocated:{}, waiting:{}'.format(*gpu_memory()))
+
             if self.save_best:
                 save_checkpoint({
                     'epoch': epoch + 1,
@@ -269,7 +272,7 @@ class Network(object):
                 #     self.test()
                 # else:
                 #     self.logger.info('Training ends!')
-                print('Early stopping')
+                self.logger.info('Early stopping')
                 break
             else:
                 self.logger.info('Current patience :{}'.format(self.patience))

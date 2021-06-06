@@ -1,17 +1,19 @@
-import os
-import sys
 import logging
+import math
+import os
 import shutil
 import subprocess
+import sys
+from collections import OrderedDict
+
+import cv2
+import numpy as np
 import torch
 import torch.nn
-import math
-import numpy as np
-import cv2
-from collections import OrderedDict
+from torch.nn.parallel._functions import Broadcast
 from torchvision.utils import make_grid
+
 from util.encoder_colors import get_mask_pallete
-from torch.nn.functional import interpolate
 
 
 def get_same_padding(kernel_size):
@@ -26,23 +28,23 @@ def get_same_padding(kernel_size):
 
 
 def shuffle_layer(x, groups):
-    batchsize, num_channels, height, width = x.data.size()
+    batch_size, num_channels, height, width = x.data.size()
     channels_per_group = num_channels // groups
     # reshape
-    x = x.view(batchsize, groups, channels_per_group, height, width)
+    x = x.view(batch_size, groups, channels_per_group, height, width)
     # transpose
     x = torch.transpose(x, 1, 2).contiguous()
     # flatten
-    x = x.view(batchsize, -1, height, width)
+    x = x.view(batch_size, -1, height, width)
     return x
 
 
-class running_score(object):
+class RunScore(object):
     def __init__(self, n_classes):
         self.n_classes = n_classes
         self.confusion_matrix = np.zeros((n_classes, n_classes))
 
-    def _fast_hist(self, label_true, label_pred, n_class):
+    def fast_hist(self, label_true, label_pred, n_class):
         mask = (label_true >= 0) & (label_true < n_class)
         hist = np.bincount(
             n_class * label_true[mask].astype(int) + label_pred[mask],
@@ -52,14 +54,9 @@ class running_score(object):
 
     def update(self, label_trues, label_preds):
         for lt, lp in zip(label_trues, label_preds):
-            self.confusion_matrix += self._fast_hist(
+            self.confusion_matrix += self.fast_hist(
                 lt.flatten(), lp.flatten(), self.n_classes
             )
-
-    @property
-    def mPixAcc(self):
-        acc_ious, _ = self.get_scores()
-        return acc_ious["Mean Acc"]
 
     def get_scores(self):
         """Returns accuracy score evaluation result.
@@ -112,18 +109,6 @@ def calc_time(seconds):
     return {'day': t, 'hour': h, 'minute': m, 'second': int(s)}
 
 
-def alpha_blend(input_image, segmentation_mask, alpha=0.5):
-    """Alpha Blending utility to overlay RGB masks on RBG images
-        :param input_image is a np.ndarray with 3 channels
-        :param segmentation_mask is a np.ndarray with 3 channels
-        :param alpha is a float value
-
-    """
-    blended = np.zeros(input_image.size, dtype=np.float32)
-    blended = input_image * alpha + segmentation_mask * (1 - alpha)
-    return blended
-
-
 def convert_state_dict(state_dict):
     """Converts a state dict saved from a dataParallel module to normal
        module state_dict inplace
@@ -162,8 +147,8 @@ def get_gpus_memory_info():
     rst = subprocess.run('nvidia-smi -q -d Memory', stdout=subprocess.PIPE, shell=True).stdout.decode('utf-8')
     rst = rst.strip().split('\n')
     memory_available = [int(line.split(':')[1].split(' ')[1]) for line in rst if 'Free' in line][::2]
-    id = int(np.argmax(memory_available))
-    return id, memory_available
+    id_num = int(np.argmax(memory_available))
+    return id_num, memory_available
 
 
 def calc_parameters_count(model):
@@ -219,23 +204,6 @@ def unique(ar, return_index=False, return_inverse=False, return_counts=False):
     return ret
 
 
-def colorEncode(labelmap, colors, mode='BGR'):
-    labelmap = labelmap.astype('int')
-    labelmap_rgb = np.zeros((labelmap.shape[0], labelmap.shape[1], 3),
-                            dtype=np.uint8)
-    for label in unique(labelmap):
-        if label < 0:
-            continue
-        labelmap_rgb += (labelmap == label)[:, :, np.newaxis] * \
-                        np.tile(colors[label],
-                                (labelmap.shape[0], labelmap.shape[1], 1))
-
-    if mode == 'BGR':
-        return labelmap_rgb[:, :, ::-1]
-    else:
-        return labelmap_rgb
-
-
 def accuracy(preds, label):
     valid = (label >= 0)
     acc_sum = (valid * (preds == label)).sum()
@@ -244,47 +212,21 @@ def accuracy(preds, label):
     return acc, valid_sum
 
 
-def intersectionAndUnion(imPred, imLab, numClass):
-    imPred = np.asarray(imPred).copy()
-    imLab = np.asarray(imLab).copy()
-
-    imPred += 1
-    imLab += 1
-    # Remove classes from unlabeled pixels in gt image.
-    # We should not penalize detections in unlabeled portions of the image.
-    imPred = imPred * (imLab > 0)
-
-    # Compute area intersection:
-    intersection = imPred * (imPred == imLab)
-    (area_intersection, _) = np.histogram(
-        intersection, bins=numClass, range=(1, numClass))
-
-    # Compute area union:
-    (area_pred, _) = np.histogram(imPred, bins=numClass, range=(1, numClass))
-    (area_lab, _) = np.histogram(imLab, bins=numClass, range=(1, numClass))
-    area_union = area_pred + area_lab - area_intersection
-
-    return (area_intersection, area_union)
-
-
-def one_hot_encoding(input, c):
+def one_hot_encoding(inputs, c):
     """
     One-hot encoder: Converts NxHxW label image to NxCxHxW, where each label is stored in a separate channel
-    :param input: input image (NxHxW)
+    :param inputs: input image (NxHxW)
     :param c: number of channels/labels
     :return: output image  (NxCxHxW)
     """
-    assert input.dim() == 3
-    N, H, W = input.size()
-    result = torch.zeros((N, c, H, W))
+    assert inputs.dim() == 3
+    n, h, w = inputs.size()
+    result = torch.zeros((n, c, h, w))
     # torch.Tensor.scatter_(dim, index, src) -> Tensor
     # eg: For 4d tensor
     #    self[i][index[i][j][k][h]][k][h] = src[i][j][k][h]    # if dim == 1
-    result.scatter_(1, input.unsqueeze(1), 1)
+    result.scatter_(1, inputs.unsqueeze(1), 1)
     return result
-
-
-from torch.nn.parallel._functions import Broadcast
 
 
 def broadcast_list(li, device_ids):
@@ -299,18 +241,19 @@ def weights_init(m):
         torch.nn.init.kaiming_normal_(m.weight)
 
 
-def store_images(input, predicts, target, dataset='promise12'):
+def store_images(inputs, predicts, target, dataset='promise12'):
     """
     store the test or valid image in tensorboardX images container
-    :param input:     NxCxHxW
+    :param inputs:     NxCxHxW
     :param predicts:  NxCxHxW
     :param target:    NxHxW
+    :param dataset: data source
     :return:
     """
-    N = input.shape[0]
+    n = inputs.shape[0]
     grid_image_list = []
-    for i in range(N):
-        channel = input[i].shape[0]
+    for i in range(n):
+        channel = inputs[i].shape[0]
         pred = torch.max(predicts[i], 0)[1].cpu().numpy()
         mask2s = get_mask_pallete(pred, dataset, channel=channel)
         if channel == 3:  # rgb
@@ -325,22 +268,9 @@ def store_images(input, predicts, target, dataset='promise12'):
         else:
             target2s = torch.from_numpy(np.expand_dims(np.array(target2s), axis=0)).float()
 
-        grid_image_list += [input[i].cpu(), mask2s, target2s]
+        grid_image_list += [inputs[i].cpu(), mask2s, target2s]
     grid_image = make_grid(grid_image_list, normalize=True, scale_each=True)
     return grid_image
-
-
-def consistent_dim(states):
-    # handle the un-consistent dimension
-    # Todo: zbabby
-    # concatenate all meta-node to output along channels dimension
-    h_max, w_max = 0, 0
-    for ss in states:
-        if h_max < ss.size()[2]:
-            h_max = ss.size()[2]
-        if w_max < ss.size()[3]:
-            w_max = ss.size()[3]
-    return [interpolate(ss, (h_max, w_max)) for ss in states]
 
 
 def resize_pred_to_val(y_pred, shape):
@@ -369,3 +299,12 @@ def create_class_weight(list_weight, mu=0.15):
         new_weight += [weight]
 
     return new_weight
+
+
+def gpu_memory(n=0):
+    t = torch.cuda.get_device_properties(n).total_memory
+    r = torch.cuda.memory_reserved(n)
+    a = torch.cuda.memory_allocated(n)
+    f = r - a  # free inside reserved
+    res = t, r, a, f
+    return [str(round(x / 1024 / 1024 / 1024, 2)) + ' GB' for x in res]

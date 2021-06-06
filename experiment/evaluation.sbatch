@@ -27,7 +27,7 @@
 # SBATCH --partition=m3h
 
 # Memory usage (MB)
-#SBATCH --mem-per-cpu=4000
+#SBATCH --mem-per-cpu=16000
 
 # To receive an email when job completes or fails
 #SBATCH --mail-user=rche0046@student.monash.edu

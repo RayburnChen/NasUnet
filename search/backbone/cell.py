@@ -1,6 +1,5 @@
 from torch.functional import F
 from util.prim_ops_set import *
-from util.utils import consistent_dim
 from util.genotype import CellLinkDownPos, CellLinkUpPos, CellPos
 
 
@@ -80,6 +79,11 @@ class Cell(nn.Module):
             tmp_list = []
             for j, h in enumerate(states):
                 tmp_list += [self._ops[offset + j](h, weight1[offset + j], weight2[offset + j])]
+
+            # TODO
+            # for ss in tmp_list:
+            #     print(ss.size())
+            # print('-----')
 
             s = sum(tmp_list)
             offset += len(states)
