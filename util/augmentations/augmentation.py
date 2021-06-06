@@ -11,6 +11,8 @@ import SimpleITK as sitk
 
 # zbabby(2019/2/21)
 # All of the augmentation for PIL image
+from torchvision.transforms import transforms
+
 
 class Compose(object):
     def __init__(self, augmentations):
@@ -35,7 +37,7 @@ class Compose(object):
 
 class ToTensor(object):
     def __call__(self, img, mask):
-        return tf.to_tensor(img), torch.from_numpy(np.array(mask)).long()
+        return transforms.ToTensor()(np.array(img)), torch.tensor(np.array(mask)).long()
 
 
 class AdjustGamma(object):
@@ -186,7 +188,7 @@ class RandomTranslate(object):
                       scale=1.0,
                       angle=0.0,
                       shear=0.0,
-                      fillcolor=0))
+                      fill=0))
 
 
 class RandomRotate(object):
@@ -201,14 +203,14 @@ class RandomRotate(object):
                       scale=1.0,
                       angle=rotate_degree,
                       resample=Image.NEAREST,
-                      fillcolor=(0, 0, 0) if len(img.size) == 3 else 0,
+                      fill=(0, 0, 0) if len(img.size) == 3 else 0,
                       shear=0.0),
             tf.affine(mask,
                       translate=(0, 0),
                       scale=1.0,
                       angle=rotate_degree,
                       resample=Image.NEAREST,
-                      fillcolor=0,
+                      fill=0,
                       shear=0.0))
 
 
@@ -395,7 +397,7 @@ class RandomElasticTransform(object):
         mask = cv2.remap(mask, map_y, map_x, interpolation=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT).reshape(
             shape1)
 
-        return (Image.fromarray(img, mode=self.img_type), Image.fromarray(mask, mode='L'))
+        return Image.fromarray(img, mode=self.img_type), Image.fromarray(mask, mode='L')
 
     def __call__(self, img, mask):
         """Elastic deformation of images as described in [Simard2003]_.

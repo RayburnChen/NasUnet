@@ -42,7 +42,7 @@ class SearchNetwork(object):
         self.args = parser.parse_args()
 
         with open(self.args.config) as fp:
-            self.cfg = yaml.load(fp)
+            self.cfg = yaml.load(fp, Loader=yaml.FullLoader)
             print('load configure file at {}'.format(self.args.config))
 
     def _init_logger(self):
