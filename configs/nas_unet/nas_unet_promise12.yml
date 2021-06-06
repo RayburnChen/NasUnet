@@ -12,7 +12,7 @@ searching:
     depth: 4
     epoch: 300
     batch_size: 6
-#    batch_size: 2
+#    batch_size: 1
     report_freq: 20
     n_workers: 2
     alpha_begin: 10
@@ -20,7 +20,7 @@ searching:
     gpu: True
     multi_gpus: True
     sharing_normal: True
-    double_down_channel: True
+    double_down_channel: False
     meta_node_num: 3
     grad_clip: 5
     train_portion: 0.5
@@ -33,8 +33,8 @@ searching:
         lr: 3.0e-4
         weight_decay: 5.0e-3
     loss:
-        name: 'cross_entropy'
-#        name: 'bce_dice_loss'
+#        name: 'dice_loss'
+        name: 'dice_ce'
         size_average: False
         aux_weight:
     resume:
@@ -48,7 +48,7 @@ training:
     report_freq: 10
     n_workers: 2
     multi_gpus: False
-    double_down_channel: True
+    double_down_channel: False
     grad_clip: 3
     max_patience: 100
     model_optimizer:
@@ -56,8 +56,8 @@ training:
         lr: 1.0e-3
         weight_decay: 5.0e-4
     loss:
-        name: 'cross_entropy'
-#        name: 'bce_dice_loss'
+#        name: 'dice_loss'
+        name: 'dice_ce'
         aux_weight: 0
     backbone:
     lr_schedule:

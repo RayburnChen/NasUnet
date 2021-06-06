@@ -107,10 +107,7 @@ class TestNetwork(object):
 
     def _init_model(self):
         # Setup loss function
-        criterion = SegmentationLosses(name=self.cfg['training']['loss']['name'],
-                                       aux_weight=self.cfg['training']['loss']['aux_weight'],
-                                       weight=self.nweight
-                                       )
+        criterion = SegmentationLosses(name=self.cfg['training']['loss']['name'])
         self.criterion = criterion.to(self.device)
         self.logger.info("Using loss {}".format(self.cfg['training']['loss']['name']))
 

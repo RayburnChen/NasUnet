@@ -115,11 +115,7 @@ class Network(object):
     def _init_model(self):
 
         # Setup loss function
-        criterion = SegmentationLosses(name=self.cfg['training']['loss']['name'],
-                                       aux_weight=self.cfg['training']['loss']['aux_weight'],
-                                       weight=self.nweight,
-                                       ignore_index=-1  # ignore background
-                                       )
+        criterion = SegmentationLosses(name=self.cfg['training']['loss']['name'])
         self.criterion = criterion.to(self.device)
 
         self.show_dice_coeff = False
@@ -428,3 +424,4 @@ class Network(object):
 if __name__ == '__main__':
     train_network = Network()
     train_network.run()
+
