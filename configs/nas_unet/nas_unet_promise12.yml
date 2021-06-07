@@ -12,7 +12,7 @@ searching:
     depth: 4
     epoch: 300
     batch_size: 6
-#    batch_size: 1
+#    batch_size: 3
     report_freq: 20
     n_workers: 2
     alpha_begin: 10
@@ -34,7 +34,7 @@ searching:
         weight_decay: 5.0e-3
     loss:
 #        name: 'dice_loss'
-        name: 'dice_ce'
+        name: 'cross_entropy'
         size_average: False
         aux_weight:
     resume:
@@ -44,7 +44,7 @@ training:
     depth: 5
     epoch: 3600
     batch_size: 16
-#    batch_size: 2
+#    batch_size: 3
     report_freq: 10
     n_workers: 2
     multi_gpus: False
@@ -57,7 +57,7 @@ training:
         weight_decay: 5.0e-4
     loss:
 #        name: 'dice_loss'
-        name: 'dice_ce'
+        name: 'cross_entropy'
         aux_weight: 0
     backbone:
     lr_schedule:

@@ -11,8 +11,7 @@ def main(format):
     if 'Windows' in platform.platform():
         os.environ['PATH'] += os.pathsep + '../3rd_tools/graphviz-2.38/bin/'
     try:
-        genotype = Genotype(down=[('down_dep_conv', 0), ('down_cweight', 1), ('down_conv', 1), ('max_pool', 0), ('max_pool', 1), ('cweight', 2), ('down_dil_conv', 0), ('down_dil_conv', 1)], down_concat=range(2, 6),
-                           up=[('dep_conv', 0), ('up_conv', 1), ('shuffle_conv', 0), ('up_cweight', 1), ('identity', 2), ('up_cweight', 1), ('dil_conv', 3), ('up_cweight', 1)], up_concat=range(2, 6))
+        genotype = Genotype(down=[('down_dep_conv', 1), ('max_pool', 0), ('max_pool', 1), ('down_dep_conv', 0), ('down_dep_conv', 0), ('down_dil_conv', 1)], down_concat=range(2, 5), up=[('identity', 0), ('up_dil_conv', 1), ('up_dep_conv', 1), ('dil_conv', 0), ('dil_conv', 0), ('dil_conv', 2)], up_concat=range(2, 5))
 
 
     except AttributeError:

@@ -2,6 +2,7 @@ import threading
 import torch
 import numpy as np
 import torch.nn.functional as F
+from numpy import ndarray
 from torch import Tensor
 
 SMOOTH = np.spacing(1)
@@ -14,18 +15,19 @@ class SegmentationMetric(object):
         self.nclass = nclass
         self.lock = threading.Lock()
         self.acc = AverageMeter()
-        self.iou = AverageMeter()
-        self.dsc = AverageMeter()
+        self.tp_list = []
+        self.fp_list = []
+        self.fn_list = []
         self.reset()
 
     def evaluate_worker(self, label, pred):
         mean_acc = mean_pix_accuracy(pred, label)
-        mean_iou = mean_intersection_union(pred, label, self.nclass)
-        mean_dsc = dice_coefficient(pred, label)
+        tp, fp, fn = confusion_matrix(pred, label)
         with self.lock:
             self.acc.update(mean_acc)
-            self.iou.update(mean_iou)
-            self.dsc.update(mean_dsc)
+            self.tp_list.append([tp])
+            self.fp_list.append([fp])
+            self.fn_list.append([fn])
         return
 
     def update(self, labels, preds):
@@ -46,14 +48,27 @@ class SegmentationMetric(object):
 
     def get(self):
         pixAcc = self.acc.mperc()
-        mIoU = self.iou.mperc()
-        dice = self.dsc.mperc()
+        mIoU = percentage(self.miou())
+        dice = percentage(self.dice())
         return pixAcc, mIoU, dice
+
+    def miou(self):
+        tp_total = np.sum(self.tp_list, 0)
+        fp_total = np.sum(self.fp_list, 0)
+        fn_total = np.sum(self.fn_list, 0)
+        return (tp_total + SMOOTH) / (tp_total + fp_total + fn_total + SMOOTH)
+
+    def dice(self):
+        tp_total = np.sum(self.tp_list, 0)
+        fp_total = np.sum(self.fp_list, 0)
+        fn_total = np.sum(self.fn_list, 0)
+        return (2 * tp_total + SMOOTH) / (2 * tp_total + fp_total + fn_total + SMOOTH)
 
     def reset(self):
         self.acc.reset()
-        self.iou.reset()
-        self.dsc.reset()
+        self.tp_list = []
+        self.fp_list = []
+        self.fn_list = []
         return
 
 
@@ -79,7 +94,15 @@ class AverageMeter(object):
         return self.avg
 
     def mperc(self):
-        return 100.0 * self.avg
+        return percentage(self.avg)
+
+
+def percentage(value, dec=2):
+    if isinstance(value, Tensor):
+        value = value.item()
+    if isinstance(value, ndarray):
+        value = np.mean(value)
+    return round(100.0 * value, dec)
 
 
 def batch_pix_accuracy(output, target):
@@ -120,6 +143,37 @@ def mean_pix_accuracy(output, target):
     return pix_acc.mean()
 
 
+def confusion_matrix(output, label):
+    with torch.no_grad():
+        num_classes = output.shape[1]
+        output_softmax = F.softmax(output, 1)
+        output_seg = output_softmax.argmax(1)
+        axes = tuple(range(1, len(label.shape)))
+        tp_hard = torch.zeros((label.shape[0], num_classes - 1)).to(output_seg.device.index)
+        fp_hard = torch.zeros((label.shape[0], num_classes - 1)).to(output_seg.device.index)
+        fn_hard = torch.zeros((label.shape[0], num_classes - 1)).to(output_seg.device.index)
+        for c in range(1, num_classes):
+            tp_hard[:, c - 1] = sum_tensor((output_seg == c).float() * (label == c).float(), axes=axes)
+            fp_hard[:, c - 1] = sum_tensor((output_seg == c).float() * (label != c).float(), axes=axes)
+            fn_hard[:, c - 1] = sum_tensor((output_seg != c).float() * (label == c).float(), axes=axes)
+
+        tp_hard = tp_hard.sum(0, keepdim=False).detach().cpu().numpy()
+        fp_hard = fp_hard.sum(0, keepdim=False).detach().cpu().numpy()
+        fn_hard = fn_hard.sum(0, keepdim=False).detach().cpu().numpy()
+        return tp_hard, fp_hard, fn_hard
+
+
+def sum_tensor(inp, axes, keepdim=False):
+    axes = np.unique(axes).astype(int)
+    if keepdim:
+        for ax in axes:
+            inp = inp.sum(int(ax), keepdim=True)
+    else:
+        for ax in sorted(axes, reverse=True):
+            inp = inp.sum(int(ax))
+    return inp
+
+
 def batch_intersection_union(output, target, nclass):
     """Batch Intersection of Union
     Args:
@@ -148,25 +202,6 @@ def batch_intersection_union(output, target, nclass):
     assert (area_inter <= area_union).all(), \
         "Intersection area should be smaller than Union area"
     return area_inter, area_union
-
-
-# https://www.kaggle.com/iezepov/fast-iou-scoring-metric-in-pytorch-and-numpy
-
-def mean_intersection_union(output, target, nclass):
-    """Batch Intersection of Union
-    Args:
-        predict: input 4D tensor
-        target: label 3D tensor
-        nclass: number of categories (int)
-    """
-    predict = torch.max(output, dim=1)[1]  # BATCH x H x W
-
-    intersection = (predict & target).float().sum((1, 2))  # Will be zero if Truth=0 or Prediction=0
-    union = (predict | target).float().sum((1, 2))  # Will be zzero if both are 0
-
-    iou = (intersection + SMOOTH) / (union + SMOOTH)  # We smooth our devision to avoid 0/0
-
-    return iou.mean()
 
 
 # ref https://github.com/CSAILVision/sceneparsing/blob/master/evaluationCode/utils_eval.py

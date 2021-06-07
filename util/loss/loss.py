@@ -22,32 +22,6 @@ class SegmentationLosses(nn.Module):
     def forward(self, inputs, targets):
         return self.loss.forward(inputs, targets)
 
-    # https://www.kaggle.com/bigironsphere/loss-function-library-keras-pytorch
-    def _dice_loss(self, inputs, targets):
-        predict = F.softmax(inputs, dim=1)[:, 1:].squeeze(1)  # BATCH x H x W
-
-        intersection = (predict * targets).float().sum((1, 2))
-        sum_predict = predict.float().sum((1, 2))
-        sum_target = targets.float().sum((1, 2))
-
-        dice = (2. * intersection + self.smooth) / (
-                sum_predict + sum_target + self.smooth)  # We smooth our devision to avoid 0/0
-        return 1 - dice.mean()
-
-    def _iou_loss(self, inputs, targets):
-        predict = F.softmax(inputs, dim=1)[:, 1:].squeeze(1)  # BATCH x H x W
-
-        intersection = (predict * targets).float().sum((1, 2))
-        total = predict.float().sum((1, 2)) + targets.float().sum((1, 2))
-        union = total - intersection
-
-        iou = (intersection + self.smooth) / (union + self.smooth)
-        return 1 - iou.mean()
-
-    def _bce_loss(self, inputs, targets):
-        prob = F.softmax(inputs, dim=1)[:, 1:].squeeze(1)
-        return F.binary_cross_entropy(prob, targets.float(), reduction='mean')
-
 
 class SoftDiceLoss(nn.Module):
     def __init__(self, do_bg=False, smooth=1e-5):
@@ -74,7 +48,7 @@ class SoftDiceLoss(nn.Module):
 
         dc = dc.mean()
 
-        return -dc
+        return 1 - dc
 
 
 class SoftDiceLossSquared(nn.Module):
@@ -125,7 +99,7 @@ class SoftDiceLossSquared(nn.Module):
 
         dc = dc.mean()
 
-        return -dc
+        return 1 - dc
 
 
 class DiceCrossEntropyLoss(nn.Module):
