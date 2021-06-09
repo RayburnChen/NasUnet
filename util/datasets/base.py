@@ -23,7 +23,6 @@ class BaseDataset(data.Dataset):
         self.img_normalize = transforms.Normalize(norm['mu'], norm['std'])
         self.test_resize = transforms.Resize(size=self.crop_size)
         self.to_tensor = ToTensor()
-        self.img2tensor = tf.to_tensor
         self.split = split
         self.mode = mode
         if self.mode == 'train':

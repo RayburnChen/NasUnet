@@ -53,13 +53,13 @@ class BuildCell(nn.Module):
             h2 = op2(h2)
 
             # the size of h1 and h2 may be different, so we need interpolate
-            if h1.size() != h2.size() :
-                _, _, height1, width1 = h1.size()
-                _, _, height2, width2 = h2.size()
-                if height1 > height2 or width1 > width2:
-                    h2 = interpolate(h2, (height1, width1))
-                else:
-                    h1 = interpolate(h1, (height2, width2))
+            # if h1.size() != h2.size() :
+            #     _, _, height1, width1 = h1.size()
+            #     _, _, height2, width2 = h2.size()
+            #     if height1 > height2 or width1 > width2:
+            #         h2 = interpolate(h2, (height1, width1))
+            #     else:
+            #         h1 = interpolate(h1, (height2, width2))
             s = h1+h2
             states += [s]
         return torch.cat([states[i] for i in self._concat], dim=1)

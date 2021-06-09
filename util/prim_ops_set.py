@@ -11,14 +11,17 @@ OPS = {
     'conv': lambda c, stride, affine, dp: ConvOps(c, c, affine=affine, has_shuffle=True),
     'avg_pool': lambda c, stride, affine, dp: PoolingOp(c, c, affine=affine, pool_type='avg'),
     'max_pool': lambda c, stride, affine, dp: PoolingOp(c, c, affine=affine,pool_type='max'),
+
     'down_cweight': lambda c, stride, affine, dp: CWeightOp(c, c, stride=2, affine=affine, dropout_rate=dp),
-    'down_dil_conv': lambda c, stride, affine, dp: ConvOps(c, c, stride=2, affine=affine, dilation=2, dropout_rate=dp),
     'down_dep_conv': lambda c, stride, affine, dp: ConvOps(c, c, stride=2, affine=affine, use_depthwise=True, dropout_rate=dp),
     'down_conv': lambda c, stride, affine, dp: ConvOps(c, c, stride=2, affine=affine, dropout_rate=dp),
+    'down_dil_conv': lambda c, stride, affine, dp: ConvOps(c, c, stride=2, affine=affine, dilation=2, dropout_rate=dp),
+
     'up_cweight': lambda c, stride, affine, dp: CWeightOp(c, c, stride=2, affine=affine,use_transpose=True, dropout_rate=dp),
     'up_dep_conv': lambda c, stride, affine, dp: ConvOps(c, c, stride=2, affine=affine,use_depthwise=True, use_transpose=True, dropout_rate=dp),
     'up_conv': lambda c, stride, affine, dp: ConvOps(c, c, stride=2, affine=affine, use_transpose=True, dropout_rate=dp),
-    'up_dil_conv': lambda c, stride, affine, dp: ConvOps(c, c, stride=2, affine=affine, dilation=2,use_transpose=True,  dropout_rate=dp),
+    'up_dil_conv': lambda c, stride, affine, dp: ConvOps(c, c, stride=2, affine=affine, dilation=3, use_transpose=True,  dropout_rate=dp),
+
 }
 
 class AbstractOp(nn.Module):
@@ -177,15 +180,22 @@ class ConvOps(BaseOp):
             padding[0] *= self.dilation
             padding[1] *= self.dilation
 
+        if use_transpose and self.dilation > 1:
+            if isinstance(padding, int):
+                padding = padding+1
+            else:
+                padding[0] = padding[0]+1
+                padding[1] = padding[1]+1
+
         # 'kernel_size', 'stride', 'padding', 'dilation' can either be 'int' or 'tuple' of int
         if use_transpose:
             if use_depthwise: # 1. transpose depth-wise conv
-                self.depth_conv = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=self.kernel_size,
+                self.depth_conv = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=self.kernel_size+1,
                         stride=self.stride, padding=padding, output_padding=self.output_padding, groups=in_channels, bias=self.bias)
                 self.point_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1,
                                             groups=self.groups, bias=False)
             else: # 2. transpose conv
-                self.conv = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=self.kernel_size,
+                self.conv = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=self.kernel_size+1,
                             stride=self.stride, padding=padding,
                             output_padding=self.output_padding, dilation=self.dilation, bias=self.bias)
         else:
@@ -277,7 +287,7 @@ class CWeightOp(BaseOp):
         )
         if stride >= 2:
             if use_transpose:
-                self.conv = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=self.kernel_size,
+                self.conv = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=self.kernel_size+1,
                                                stride=self.stride, padding=padding, output_padding=self.output_padding,
                                                 bias=False)
             else:

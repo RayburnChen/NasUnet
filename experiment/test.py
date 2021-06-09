@@ -13,7 +13,7 @@ import torch.backends.cudnn as cudnn
 sys.path.append('..')
 from util.loss.loss import SegmentationLosses
 from util.datasets import get_dataset
-from util.utils import get_logger, average_meter, store_images, resize_pred_to_val
+from util.utils import get_logger, store_images, resize_pred_to_val
 from util.utils import get_gpus_memory_info, calc_parameters_count, create_exp_dir
 from util.challenge.promise12.store_test_seg import predict_test
 from models import get_segmentation_model
@@ -49,7 +49,7 @@ class TestNetwork(object):
         self.args = parser.parse_args()
 
         with open(self.args.config) as fp:
-            self.cfg = yaml.load(fp)
+            self.cfg = yaml.load(fp, Loader=yaml.FullLoader)
             print('load configure file at {}'.format(self.args.config))
         self.model_name = self.args.model
         print('Usage model :{}'.format(self.model_name))
@@ -107,10 +107,7 @@ class TestNetwork(object):
 
     def _init_model(self):
         # Setup loss function
-        criterion = SegmentationLosses(name=self.cfg['training']['loss']['name'],
-                                       aux_weight=self.cfg['training']['loss']['aux_weight'],
-                                       weight=self.nweight
-                                       )
+        criterion = SegmentationLosses(name=self.cfg['training']['loss']['name'])
         self.criterion = criterion.to(self.device)
         self.logger.info("Using loss {}".format(self.cfg['training']['loss']['name']))
 
@@ -159,7 +156,6 @@ class TestNetwork(object):
     def test(self, img_queue, split='val', desc=''):
         self.model.eval()
         predict_list = []
-        accuracy = 0
         tbar = tqdm(img_queue)
         create_exp_dir(desc, desc='=>Save prediction image on')
         with torch.no_grad():
@@ -176,12 +172,11 @@ class TestNetwork(object):
                     self.loss_meter.update(test_loss.item())
                     self.metric.update(target, predicts[0])
                     if step % self.cfg['training']['report_freq'] == 0:
-                        pixAcc, mIoU = self.metric.get()
-                        self.logger.info('{} loss: {}, pixAcc: {}, mIoU: {}'.format(
-                            split, self.loss_meter.mloss, pixAcc, mIoU))
-                        tbar.set_description('loss: %.6f, pixAcc: %.3f, mIoU: %.6f'
-                                             % (self.loss_meter.mloss, pixAcc, mIoU))
-                    accuracy += dice_coefficient(predicts[0].cpu(), target.cpu())
+                        pixAcc, mIoU, dice = self.metric.get()
+                        self.logger.info('{} loss: {}, pixAcc: {}, mIoU: {}, dice: {}'.format(
+                            split, self.loss_meter.mloss(), pixAcc, mIoU, dice))
+                        tbar.set_description('loss: %.6f, pixAcc: %.3f, mIoU: %.6f, dice: %.6f'
+                                             % (self.loss_meter.mloss(), pixAcc, mIoU, dice))
                 else:
                     N =  predicts[0].shape[0]
                     for i in range(N):
@@ -200,8 +195,8 @@ class TestNetwork(object):
 
                 if desc=='promise12': # for promise12, test have not label or have label to calc extra metric
                     predict_list += [torch.argmax(predicts[0], dim=1).cpu().numpy()]
-
-        print('==> accuracy: {}'.format(accuracy/len(img_queue)))
+        pixAcc, mIoU, dice = self.metric.get()
+        print('==> dice: {}'.format(dice))
 
         # cause the predicts is a list [pred, aux_pred(may not)]
         if len(predicts[0].shape) == 4:  #
@@ -212,9 +207,9 @@ class TestNetwork(object):
         # save images
         if not isinstance(target, list) and not isinstance(target, str): #
             grid_image = store_images(input, pred, target)
-            pixAcc, mIoU = self.metric.get()
-            self.logger.info('{}/loss: {}, pixAcc: {}, mIoU: {}'.format(
-                split, self.loss_meter.mloss, pixAcc, mIoU))
+            pixAcc, mIoU, dice = self.metric.get()
+            self.logger.info('{}/loss: {}, pixAcc: {}, mIoU: {}, dice: {}'.format(
+                split, self.loss_meter.mloss(), pixAcc, mIoU, dice))
         elif desc == 'promise12':  # for promise12, test have not label
             predict_test(predict_list, target, self.save_path + '/{}_rst'.format(split))
 
@@ -228,7 +223,7 @@ class TestNetwork(object):
         self.logger.info('args = %s', self.cfg)
         # Setup Metrics
         self.metric = SegmentationMetric(self.n_classes)
-        self.loss_meter = average_meter()
+        self.loss_meter = AverageMeter()
         run_start = time.time()
         # Set up results folder
         if not os.path.exists(self.save_image_path):

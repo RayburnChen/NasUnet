@@ -14,14 +14,15 @@ import torchvision.transforms as transform
 sys.path.append('..')
 from util.loss.loss import SegmentationLosses
 from util.datasets import get_dataset, datasets
-from util.utils import get_logger, save_checkpoint
-from util.utils import average_meter, calc_time
+from util.utils import get_logger, save_checkpoint, gpu_memory
+from util.utils import calc_time
 from util.utils import get_gpus_memory_info, calc_parameters_count
 from util.optimizers import get_optimizer
 from util.metrics import *
 from search.backbone.nas_unet_search import NasUnetSearch, Architecture
 
 from tensorboardX import SummaryWriter
+
 
 class SearchNetwork(object):
 
@@ -35,20 +36,20 @@ class SearchNetwork(object):
 
     def _init_configure(self):
         parser = argparse.ArgumentParser(description='config')
-        parser.add_argument('--config', nargs='?',type=str,default='../configs/nas_unet/nas_unet_voc.yml',
+        parser.add_argument('--config', nargs='?', type=str, default='../configs/nas_unet/nas_unet_voc.yml',
                             help='Configuration file to use')
 
         self.args = parser.parse_args()
 
         with open(self.args.config) as fp:
-            self.cfg = yaml.load(fp)
+            self.cfg = yaml.load(fp, Loader=yaml.FullLoader)
             print('load configure file at {}'.format(self.args.config))
 
     def _init_logger(self):
-        log_dir = '../logs/nasunet/search' + '/{}'.format(self.cfg['data']['dataset']) +\
+        log_dir = '../logs/nasunet/search' + '/{}'.format(self.cfg['data']['dataset']) + \
                   '/search-{}'.format(time.strftime('%Y%m%d-%H%M%S'))
         self.logger = get_logger(log_dir)
-        print('RUNDIR: {}'.format(log_dir))
+        self.logger.info('RUNDIR: {}'.format(log_dir))
         shutil.copy(self.args.config, log_dir)
         self.logger.info('Nas-Search')
         self.save_path = log_dir
@@ -60,7 +61,7 @@ class SearchNetwork(object):
         self.logger.info('seed is {}'.format(self.cfg.get('seed', 1337)))
         np.random.seed(self.cfg.get('seed', 1337))
         torch.manual_seed(self.cfg.get('seed', 1337))
-        if self.cfg['searching']['gpu'] and torch.cuda.is_available() :
+        if self.cfg['searching']['gpu'] and torch.cuda.is_available():
             self.device_id, _ = get_gpus_memory_info()
             self.device = torch.device('cuda:{}'.format(0 if self.cfg['searching']['multi_gpus'] else self.device_id))
             torch.cuda.manual_seed(self.cfg.get('seed', 1337))
@@ -87,7 +88,7 @@ class SearchNetwork(object):
 
         self.valid_queue = data.DataLoader(trainset, batch_size=self.cfg['searching']['batch_size'],
                                            sampler=torch.utils.data.sampler.SubsetRandomSampler(
-                                               indices[split:num_train]),**kwargs)
+                                               indices[split:num_train]), **kwargs)
 
     def _init_model(self):
 
@@ -121,17 +122,18 @@ class SearchNetwork(object):
         # Setup optimizer, lr_scheduler and loss function for model
         optimizer_cls1 = get_optimizer(self.cfg, phase='searching', optimizer_type='model_optimizer')
         optimizer_params1 = {k: v for k, v in self.cfg['searching']['model_optimizer'].items()
-                            if k != 'name'}
+                             if k != 'name'}
 
         self.model_optimizer = optimizer_cls1(self.model.parameters(), **optimizer_params1)
         self.logger.info("Using model optimizer {}".format(self.model_optimizer))
 
-        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.model_optimizer, self.cfg['searching']['epoch'], eta_min=1.0e-3)
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.model_optimizer,
+                                                                    self.cfg['searching']['epoch'], eta_min=1.0e-3)
 
         # Setup optimizer, lr_scheduler and loss function for architecture
         optimizer_cls2 = get_optimizer(self.cfg, phase='searching', optimizer_type='arch_optimizer')
         optimizer_params2 = {k: v for k, v in self.cfg['searching']['arch_optimizer'].items()
-                            if k != 'name'}
+                             if k != 'name'}
 
         self.arch_optimizer = optimizer_cls2(self.model.alphas(), **optimizer_params2)
 
@@ -141,7 +143,7 @@ class SearchNetwork(object):
     def _check_resume(self):
         self.dur_time = 0
         self.start_epoch = 0
-        self.cur_count = 0
+        self.patience = 0
         self.geno_type = ''
         # optionally resume from a checkpoint for model
         if self.cfg['searching']['resume'] is not None:
@@ -154,7 +156,7 @@ class SearchNetwork(object):
                 checkpoint = torch.load(self.cfg['searching']['resume'], map_location=self.device)
                 self.start_epoch = checkpoint['epoch']
                 self.dur_time = checkpoint['dur_time']
-                self.cur_count = 0
+                self.patience = 0
                 self.geno_type = checkpoint['geno_type']
                 self.architect.optimizer.load_state_dict(checkpoint['arch_optimizer'])
                 self.scheduler.load_state_dict(checkpoint['scheduler'])
@@ -170,8 +172,8 @@ class SearchNetwork(object):
         # Setup Metrics
         self.metric_train = SegmentationMetric(self.n_classes)
         self.metric_val = SegmentationMetric(self.n_classes)
-        self.train_loss_meter = average_meter()
-        self.val_loss_meter = average_meter()
+        self.train_loss_meter = AverageMeter()
+        self.val_loss_meter = AverageMeter()
         run_start = time.time()
 
         for epoch in range(self.start_epoch, self.cfg['searching']['epoch']):
@@ -179,7 +181,7 @@ class SearchNetwork(object):
 
             # update scheduler
             self.scheduler.step()
-            self.logger.info('epoch %d / %d lr %e', self.epoch,
+            self.logger.info('Epoch %d / %d lr %e', self.epoch,
                              self.cfg['searching']['epoch'], self.scheduler.get_lr()[-1])
 
             # get genotype
@@ -194,14 +196,14 @@ class SearchNetwork(object):
             if self.epoch >= self.cfg['searching']['alpha_begin']:
                 # check whether the genotype has changed
                 if self.geno_type == genotype:
-                    self.cur_count += 1
+                    self.patience += 1
                 else:
-                    self.cur_count = 0
+                    self.patience = 0
                     self.geno_type = genotype
 
-                self.logger.info('curr_cout = {}'.format(self.cur_count))
+                self.logger.info('Current patience :{}'.format(self.patience))
 
-                if self.cur_count >= self.cfg['searching']['max_patience']:
+                if self.patience >= self.cfg['searching']['max_patience']:
                     self.logger.info('Reach the max patience! \n best genotype {}'.format(genotype))
                     break
 
@@ -211,19 +213,22 @@ class SearchNetwork(object):
             # valid the model
             self.infer()
 
+            if self.epoch % self.cfg['searching']['report_freq'] == 0:
+                self.logger.info('GPU memory total:{}, reserved:{}, allocated:{}, waiting:{}'.format(*gpu_memory()))
+
             save_checkpoint({
                 'epoch': epoch + 1,
                 'dur_time': self.dur_time + time.time() - run_start,
-                'cur_count': self.cur_count,
+                'cur_patience': self.patience,
                 'geno_type': self.geno_type,
                 'model_state': self.model.state_dict(),
                 'arch_optimizer': self.arch_optimizer.state_dict(),
                 'model_optimizer': self.model_optimizer.state_dict(),
                 'alphas_dict': self.model.alphas_dict(),
                 'scheduler': self.scheduler.state_dict()
-            },False, self.save_path)
+            }, False, self.save_path)
             self.logger.info('save checkpoint (epoch %d) in %s  dur_time: %s'
-                        , epoch, self.save_path, calc_time(self.dur_time + time.time() - run_start))
+                             , epoch, self.save_path, calc_time(self.dur_time + time.time() - run_start))
 
             self.metric_train.reset()
             self.metric_val.reset()
@@ -266,11 +271,11 @@ class SearchNetwork(object):
                                      self.cfg['searching']['grad_clip'])
 
             if step % self.cfg['searching']['report_freq'] == 0:
-                pixAcc, mIoU = self.metric_train.get()
-                self.logger.info('train %03d %e | epoch[%d]/[%d]', step+1,
+                pixAcc, mIoU, dice = self.metric_train.get()
+                self.logger.info('Train %03d %e | epoch[%d]/[%d]', step + 1,
                                  self.train_loss_meter.avg, self.epoch, self.cfg['searching']['epoch'])
                 tbar.set_description('Train loss: %.3f' % (self.train_loss_meter.avg))
-                self.logger.info('pixAcc: %.3f; mIoU: %.5f' % (pixAcc, mIoU))
+                self.logger.info('Train pixAcc: %.3f; mIoU: %.5f; dice: %.5f' % (pixAcc, mIoU, dice))
 
             # Update the network parameters
             self.model_optimizer.step()
@@ -291,33 +296,22 @@ class SearchNetwork(object):
 
                 self.metric_val.update(target, predicts)
                 if step % self.cfg['searching']['report_freq'] == 0:
-                    pixAcc, mIoU = self.metric_val.get()
+                    pixAcc, mIoU, dice = self.metric_val.get()
                     loss_v = self.val_loss_meter.avg
-                    self.logger.info('Val loss: %.6f; pixAcc: %.3f; mIoU: %.5f' % (loss_v, pixAcc, mIoU))
-                    tbar.set_description('Val loss: %.6f; pixAcc: %.3f; mIoU: %.5f' % (loss_v, pixAcc, mIoU))
+                    self.logger.info(
+                        'Val loss: %.6f; pixAcc: %.3f; mIoU: %.5f; dice: %.5f' % (loss_v, pixAcc, mIoU, dice))
+                    tbar.set_description(
+                        'Val loss: %.6f; pixAcc: %.3f; mIoU: %.5f; dice: %.5f' % (loss_v, pixAcc, mIoU, dice))
 
-        pixAcc, mIoU = self.metric_val.get()
-        cur_loss = self.val_loss_meter.mloss
+        pixAcc, mIoU, dice = self.metric_val.get()
+        cur_loss = self.val_loss_meter.mloss()
+        self.logger.info('Epoch {} Val loss: {}, pixAcc: {}, mIoU: {}, dice: {}'.format(self.epoch, cur_loss, pixAcc, mIoU, dice))
         self.writer.add_scalar('Val/pixAcc', pixAcc, self.epoch)
         self.writer.add_scalar('Val/mIoU', mIoU, self.epoch)
+        self.writer.add_scalar('Val/dice', dice, self.epoch)
         self.writer.add_scalar('Val/loss', cur_loss, self.epoch)
+
 
 if __name__ == '__main__':
     search_network = SearchNetwork()
     search_network.run()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

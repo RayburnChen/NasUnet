@@ -77,7 +77,7 @@ class UltraNerve(BaseDataset):
         if self.mode != 'test':
             img, target = self.to_tensor(img, target)
         else:
-            img = self.img2tensor(img)
+            img = transforms.ToTensor()(np.array(img))
 
         # 4. normalize for img
         img = self.img_normalize(img)

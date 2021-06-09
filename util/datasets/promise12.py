@@ -8,7 +8,7 @@ import SimpleITK as sitk
 from os import listdir
 from os.path import isfile, join, splitext
 from skimage.exposure import equalize_adapthist
-from .base import  BaseDataset
+from .base import BaseDataset
 from util.utils import create_exp_dir
 from util.augmentations import smooth_images
 from util.augmentations import *
@@ -406,7 +406,7 @@ class Promise12(BaseDataset):
                 img, target = self.to_tensor(img, target)
         else:
             # 3. img to tensor
-            img = self.img2tensor(img)
+            img = transforms.ToTensor()(np.array(img))
 
         # 4. normalize for img
         if self.img_normalize != None:
