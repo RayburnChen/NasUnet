@@ -21,6 +21,7 @@ from util.challenge.promise12.store_test_seg import predict_test
 from util.metrics import *
 from models import get_segmentation_model
 import models.geno_searched as geno_types
+from util import genotype
 from tensorboardX import SummaryWriter
 
 
@@ -46,6 +47,10 @@ class Network(object):
                             help='finetuning on a different dataset')
         parser.add_argument('--warm', nargs='?', type=int, default=0,
                             help='warm up from pre epoch')
+        parser.add_argument('--genotype', nargs='?', type=str, default='',
+                            help='Model architecture')
+        parser.add_argument('--loss', nargs='?', type=str, default='',
+                            help='Loss function')
 
         self.args = parser.parse_args()
 
@@ -115,24 +120,23 @@ class Network(object):
     def _init_model(self):
 
         # Setup loss function
-        criterion = SegmentationLosses(name=self.cfg['training']['loss']['name'])
+        loss_name = self.args.loss if len(self.args.loss) > 0 else self.cfg['training']['loss']['name']
+        criterion = SegmentationLosses(name=loss_name)
         self.criterion = criterion.to(self.device)
+        self.logger.info("Using loss {}".format(loss_name))
 
         self.show_dice_coeff = False
         if self.cfg['data']['dataset'] in ['bladder', 'chaos', 'ultrasound_nerve', 'promise12']:
             self.show_dice_coeff = True
 
-        self.logger.info("Using loss {}".format(self.criterion))
-
         # Setup Model
-        try:
-            genotype = eval('geno_types.%s' % self.cfg['training']['geno_type'])
-            init_channels = self.cfg['training']['init_channels']
-            depth = self.cfg['training']['depth']
-        except:
-            genotype = None
-            init_channels = 0
-            depth = 0
+        init_channels = self.cfg['training']['init_channels']
+        depth = self.cfg['training']['depth']
+        if len(self.args.genotype) > 0:
+            self.genotype = eval('genotype.%s' % self.args.genotype)
+        else:
+            self.genotype = eval('geno_types.%s' % self.cfg['training']['geno_type'])
+        self.logger.info('Using genotype: {}'.format(self.genotype))
         # aux_weight > 0 and the loss is cross_entropy, we will use FCN header for auxiliary layer. and the aux set to True
         # aux_weight > 0 and the loss is cross_entropy_with_dice, we will combine cross entropy loss with dice loss
         self.aux = True if self.cfg['training']['loss']['aux_weight'] > 0 \
@@ -144,7 +148,7 @@ class Network(object):
                                        c=init_channels,
                                        depth=depth,
                                        # the below two are special for nasunet
-                                       genotype=genotype,
+                                       genotype=self.genotype,
                                        double_down_channel=self.cfg['training']['double_down_channel']
                                        )
 
@@ -361,10 +365,12 @@ class Network(object):
         # save in tensorboard scalars
         pixAcc, mIoU, dice = self.metric_val.get()
         cur_loss = self.val_loss_meter.mloss()
+        self.logger.info(
+            'Epoch {} Val loss: {}, pixAcc: {}, mIoU: {}, dice: {}'.format(self.epoch, cur_loss, pixAcc, mIoU, dice))
         self.writer.add_scalar('Val/Acc', pixAcc, self.epoch)
         self.writer.add_scalar('Val/mIoU', mIoU, self.epoch)
         self.writer.add_scalar('Val/dice', dice, self.epoch)
-        self.writer.add_scalar('Val/loss', self.val_loss_meter.mloss(), self.epoch)
+        self.writer.add_scalar('Val/loss', cur_loss, self.epoch)
 
         # for early-stopping
         if self.best_loss > cur_loss or self.best_mIoU < mIoU:
@@ -424,4 +430,3 @@ class Network(object):
 if __name__ == '__main__':
     train_network = Network()
     train_network.run()
-

@@ -13,8 +13,12 @@ class SegmentationLosses(nn.Module):
             self.loss = nn.CrossEntropyLoss()
         elif name == 'dice_ce':
             self.loss = DiceCrossEntropyLoss()
+        elif name == 'dice_sq_ce':
+            self.loss = DiceCrossEntropyLoss(square_dice=True)
         elif name == 'dice_loss':
             self.loss = SoftDiceLoss()
+        elif name == 'dice_square':
+            self.loss = SoftDiceLossSquared()
         else:
             raise NotImplementedError
         self.smooth = np.spacing(1)

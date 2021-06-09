@@ -31,7 +31,6 @@ class SegmentationMetric(object):
         return
 
     def update(self, labels, preds):
-
         if isinstance(preds, torch.Tensor):
             self.evaluate_worker(labels, preds)
         elif isinstance(preds, (list, tuple)):
@@ -97,7 +96,7 @@ class AverageMeter(object):
         return percentage(self.avg)
 
 
-def percentage(value, dec=2):
+def percentage(value, dec=3):
     if isinstance(value, Tensor):
         value = value.item()
     if isinstance(value, ndarray):
@@ -202,74 +201,3 @@ def batch_intersection_union(output, target, nclass):
     assert (area_inter <= area_union).all(), \
         "Intersection area should be smaller than Union area"
     return area_inter, area_union
-
-
-# ref https://github.com/CSAILVision/sceneparsing/blob/master/evaluationCode/utils_eval.py
-def pixel_accuracy(im_pred, im_lab):
-    im_pred = np.asarray(im_pred)
-    im_lab = np.asarray(im_lab)
-
-    # Remove classes from unlabeled pixels in gt image. 
-    # We should not penalize detections in unlabeled portions of the image.
-    pixel_labeled = np.sum(im_lab > 0)
-    pixel_correct = np.sum((im_pred == im_lab) * (im_lab > 0))
-
-    return pixel_correct, pixel_labeled
-
-
-def _fast_hist(label_true, label_pred, n_class):
-    mask = (label_true >= 0) & (label_true < n_class)
-    hist = np.bincount(
-        n_class * label_true[mask].astype(int) +
-        label_pred[mask], minlength=n_class ** 2).reshape(n_class, n_class)
-    return hist
-
-
-def label_accuracy_score(label_trues, label_preds, n_class):
-    """Returns accuracy score evaluation result.
-      - overall accuracy
-      - mean accuracy
-      - mean IU
-      - fwavacc
-    """
-    hist = np.zeros((n_class, n_class))
-    for lt, lp in zip(label_trues, label_preds):
-        hist += _fast_hist(lt.flatten(), lp.flatten(), n_class)
-    acc = np.diag(hist).sum() / hist.sum()
-    acc_cls = np.diag(hist) / hist.sum(axis=1)
-    acc_cls = np.nanmean(acc_cls)
-    iu = np.diag(hist) / (hist.sum(axis=1) + hist.sum(axis=0) - np.diag(hist))
-    mean_iu = np.nanmean(iu)
-    freq = hist.sum(axis=1) / hist.sum()
-    fwavacc = (freq[freq > 0] * iu[freq > 0]).sum()
-    return acc, acc_cls, mean_iu, fwavacc
-
-
-def rel_abs_vol_diff(y_true, y_pred):
-    return np.abs((y_pred.sum() / y_true.sum() - 1) * 100)
-
-
-def get_boundary(data, img_dim=2, shift=-1):
-    data = data > 0
-    edge = np.zeros_like(data)
-    for nn in range(img_dim):
-        edge += ~(data ^ np.roll(~data, shift=shift, axis=nn))
-    return edge.astype(int)
-
-
-def numpy_dice(y_true, y_pred, axis=None, smooth=1.0):
-    intersection = y_true * y_pred
-    return (2. * intersection.sum(axis=axis) + smooth) / (
-            np.sum(y_true, axis=axis) + np.sum(y_pred, axis=axis) + smooth)
-
-
-def dice_coefficient(inputs, target):
-    predict = torch.argmax(inputs, dim=1)  # BATCH x H x W
-
-    intersection = (predict & target).float().sum((1, 2))  # Will be zero if Truth=0 or Prediction=0
-    den1 = predict.float().sum((1, 2))  # Will be zero if Truth=0 or Prediction=0
-    den2 = target.float().sum((1, 2))  # Will be zzero if both are 0
-
-    dice = (2. * intersection + SMOOTH) / (den1 + den2 + SMOOTH)  # We smooth our devision to avoid 0/0
-
-    return dice.mean()

@@ -143,7 +143,7 @@ class SearchNetwork(object):
     def _check_resume(self):
         self.dur_time = 0
         self.start_epoch = 0
-        self.cur_count = 0
+        self.patience = 0
         self.geno_type = ''
         # optionally resume from a checkpoint for model
         if self.cfg['searching']['resume'] is not None:
@@ -156,7 +156,7 @@ class SearchNetwork(object):
                 checkpoint = torch.load(self.cfg['searching']['resume'], map_location=self.device)
                 self.start_epoch = checkpoint['epoch']
                 self.dur_time = checkpoint['dur_time']
-                self.cur_count = 0
+                self.patience = 0
                 self.geno_type = checkpoint['geno_type']
                 self.architect.optimizer.load_state_dict(checkpoint['arch_optimizer'])
                 self.scheduler.load_state_dict(checkpoint['scheduler'])
@@ -196,14 +196,14 @@ class SearchNetwork(object):
             if self.epoch >= self.cfg['searching']['alpha_begin']:
                 # check whether the genotype has changed
                 if self.geno_type == genotype:
-                    self.cur_count += 1
+                    self.patience += 1
                 else:
-                    self.cur_count = 0
+                    self.patience = 0
                     self.geno_type = genotype
 
-                self.logger.info('curr_cout = {}'.format(self.cur_count))
+                self.logger.info('Current patience :{}'.format(self.patience))
 
-                if self.cur_count >= self.cfg['searching']['max_patience']:
+                if self.patience >= self.cfg['searching']['max_patience']:
                     self.logger.info('Reach the max patience! \n best genotype {}'.format(genotype))
                     break
 
@@ -219,7 +219,7 @@ class SearchNetwork(object):
             save_checkpoint({
                 'epoch': epoch + 1,
                 'dur_time': self.dur_time + time.time() - run_start,
-                'cur_count': self.cur_count,
+                'cur_patience': self.patience,
                 'geno_type': self.geno_type,
                 'model_state': self.model.state_dict(),
                 'arch_optimizer': self.arch_optimizer.state_dict(),
@@ -305,6 +305,7 @@ class SearchNetwork(object):
 
         pixAcc, mIoU, dice = self.metric_val.get()
         cur_loss = self.val_loss_meter.mloss()
+        self.logger.info('Epoch {} Val loss: {}, pixAcc: {}, mIoU: {}, dice: {}'.format(self.epoch, cur_loss, pixAcc, mIoU, dice))
         self.writer.add_scalar('Val/pixAcc', pixAcc, self.epoch)
         self.writer.add_scalar('Val/mIoU', mIoU, self.epoch)
         self.writer.add_scalar('Val/dice', dice, self.epoch)
