@@ -36,7 +36,8 @@ class SearchNetwork(object):
 
     def _init_configure(self):
         parser = argparse.ArgumentParser(description='config')
-        parser.add_argument('--config', nargs='?', type=str, default='../configs/nas_unet/nas_unet_voc.yml', help='Configuration file to use')
+        parser.add_argument('--config', nargs='?', type=str, default='../configs/nas_unet/nas_unet_voc.yml',
+                            help='Configuration file to use')
 
         self.args = parser.parse_args()
 
@@ -134,10 +135,9 @@ class SearchNetwork(object):
         optimizer_params2 = {k: v for k, v in self.cfg['searching']['arch_optimizer'].items()
                              if k != 'name'}
 
-        self.arch_optimizer = optimizer_cls2(self.model.alphas(), **optimizer_params2)
+        self.arch_optimizer = optimizer_cls2(self.model.arch_parameters(), **optimizer_params2)
 
-        self.architect = Architecture(self.model, arch_optimizer=self.arch_optimizer,
-                                      criterion=self.criterion)
+        self.architect = Architecture(self.model, arch_optimizer=self.arch_optimizer, criterion=self.criterion)
 
     def _check_resume(self):
         self.dur_time = 0
@@ -162,7 +162,7 @@ class SearchNetwork(object):
                 self.model.load_state_dict(checkpoint['model_state'])
                 self.model_optimizer.load_state_dict(checkpoint['model_optimizer'])
                 self.arch_optimizer.load_state_dict(checkpoint['arch_optimizer'])
-                self.model.load_alphas(checkpoint['alphas_dict'])
+                self.model.load_params(checkpoint['alphas_dict'], checkpoint['betas_dict'])
             else:
                 self.logger.info("No checkpoint found at '{}'".format(self.cfg['searching']['resume']))
 
@@ -224,6 +224,7 @@ class SearchNetwork(object):
                 'arch_optimizer': self.arch_optimizer.state_dict(),
                 'model_optimizer': self.model_optimizer.state_dict(),
                 'alphas_dict': self.model.alphas_dict(),
+                'betas_dict': self.model.betas_dict(),
                 'scheduler': self.scheduler.state_dict()
             }, False, self.save_path)
             self.logger.info('save checkpoint (epoch %d) in %s  dur_time: %s'
@@ -304,7 +305,8 @@ class SearchNetwork(object):
 
         pixAcc, mIoU, dice = self.metric_val.get()
         cur_loss = self.val_loss_meter.mloss()
-        self.logger.info('Epoch {} Val loss: {}, pixAcc: {}, mIoU: {}, dice: {}'.format(self.epoch, cur_loss, pixAcc, mIoU, dice))
+        self.logger.info(
+            'Epoch {} Val loss: {}, pixAcc: {}, mIoU: {}, dice: {}'.format(self.epoch, cur_loss, pixAcc, mIoU, dice))
         self.writer.add_scalar('Val/pixAcc', pixAcc, self.epoch)
         self.writer.add_scalar('Val/mIoU', mIoU, self.epoch)
         self.writer.add_scalar('Val/dice', dice, self.epoch)

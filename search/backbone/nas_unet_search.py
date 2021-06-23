@@ -59,7 +59,7 @@ class SearchULikeCNN(nn.Module):
         if use_softmax_head:
             self.softmax = nn.LogSoftmax(dim=1)
 
-    def forward(self, x, weights1_down, weights1_up, weights2_down, weights2_up):
+    def forward(self, x, weights_down_norm, weights_up_norm, weights_down, weights_up, betas_down, betas_up):
         s0, s1 = self.stem0(x), self.stem1(x)
         down_cs = []
 
@@ -69,7 +69,7 @@ class SearchULikeCNN(nn.Module):
         for i, cell in enumerate(self.down_cells):
             # Sharing a global N*M weights matrix
             # where M : normal + down
-            s0, s1 = s1, cell(s0, s1, weights1_down, weights2_down)
+            s0, s1 = s1, cell(s0, s1, weights_down_norm, weights_down, betas_down)
             down_cs.append(s1)
 
         # decoder pathway
@@ -77,7 +77,7 @@ class SearchULikeCNN(nn.Module):
             # Sharing a global N*M weights matrix
             # where M : normal + up
             s0 = down_cs[-(i + 2)]  # horizon input
-            s1 = cell(s0, s1, weights1_up, weights2_up)
+            s1 = cell(s0, s1, weights_up_norm, weights_up, betas_up)
 
         x = self.conv_segmentation(s1)
         if self._use_softmax_head:
@@ -119,29 +119,38 @@ class NasUnetSearch(nn.Module):
         self.alphas_normal_up = self.alphas_normal_down if self._use_sharing else nn.Parameter(
             1e-3 * torch.randn(k, normal_num_ops))
 
+        self.betas_down = nn.Parameter(1e-3 * torch.randn(k))
+        self.betas_up = nn.Parameter(1e-3 * torch.randn(k))
+
         # setup alphas list
-        self._alphas = []
-        for n, p in self.named_parameters():
-            if 'alphas' in n:  # TODO: it is a trick, because the parameter name is the prefix of self.alphas_xxx
-                self._alphas.append((n, p))
+        # self._alphas = []
+        # for n, p in self.named_parameters():
+        #     if 'alphas' in n:  # TODO: it is a trick, because the parameter name is the prefix of self.alphas_xxx
+        #         self._alphas.append((n, p))
 
         self._arch_parameters = [
-            self.alphas_normal_down,
             self.alphas_down,
+            self.alphas_up,
+            self.alphas_normal_down,
             self.alphas_normal_up,
-            self.alphas_up
+            self.betas_down,
+            self.betas_up
         ]
 
-    def load_alphas(self, alphas_dict):
+    def load_params(self, alphas_dict, betas_dict):
         self.alphas_down = alphas_dict['alphas_down']
         self.alphas_up = alphas_dict['alphas_up']
         self.alphas_normal_down = alphas_dict['alphas_normal_down']
         self.alphas_normal_up = alphas_dict['alphas_normal_up']
+        self.betas_down = betas_dict['betas_down']
+        self.betas_up = betas_dict['betas_up']
         self._arch_parameters = [
-            self.alphas_normal_down,
             self.alphas_down,
+            self.alphas_up,
+            self.alphas_normal_down,
             self.alphas_normal_up,
-            self.alphas_up
+            self.betas_down,
+            self.betas_up
         ]
 
     def alphas_dict(self):
@@ -150,6 +159,12 @@ class NasUnetSearch(nn.Module):
             'alphas_normal_down': self.alphas_normal_down,
             'alphas_up': self.alphas_up,
             'alphas_normal_up': self.alphas_normal_up,
+        }
+
+    def betas_dict(self):
+        return {
+            'betas_down': self.betas_down,
+            'betas_up': self.betas_up
         }
 
     def arch_parameters(self):
@@ -161,11 +176,21 @@ class NasUnetSearch(nn.Module):
         # which is different from down cells (s0 and s1 all need down operation). so when
         # parse a up cell string, the string operations is |_|*|_|...|_|, where * indicate up operation
         # mask1 and mask2 below is convenient to handle it.
+        k = sum(1 for i in range(self._meta_node_num) for n in range(2 + i))  # total number of input node
+        for j in range(k):
+            alphas_normal_down = self.alphas_normal_down.clone().detach()
+            alphas_down = self.alphas_down.clone().detach()
+            alphas_normal_up = self.alphas_normal_up.clone().detach()
+            alphas_up = self.alphas_up.clone().detach()
+            alphas_normal_down[j, :] = alphas_normal_down[j, :] * self.betas_down[j].item()
+            alphas_down[j, :] = alphas_down[j, :] * self.betas_down[j].item()
+            alphas_normal_up[j, :] = alphas_normal_up[j, :] * self.betas_up[j].item()
+            alphas_up[j, :] = alphas_up[j, :] * self.betas_up[j].item()
         geno_parser = GenoParser(self._meta_node_num)
-        gene_down = geno_parser.parse(F.softmax(self.alphas_normal_down, dim=-1).detach().cpu().numpy(),
-                                      F.softmax(self.alphas_down, dim=-1).detach().cpu().numpy(), cell_type='down')
-        gene_up = geno_parser.parse(F.softmax(self.alphas_normal_up, dim=-1).detach().cpu().numpy(),
-                                    F.softmax(self.alphas_up, dim=-1).detach().cpu().numpy(), cell_type='up')
+        gene_down = geno_parser.parse(F.softmax(alphas_normal_down, dim=-1).detach().cpu().numpy(),
+                                      F.softmax(alphas_down, dim=-1).detach().cpu().numpy(), cell_type='down')
+        gene_up = geno_parser.parse(F.softmax(alphas_normal_up, dim=-1).detach().cpu().numpy(),
+                                    F.softmax(alphas_up, dim=-1).detach().cpu().numpy(), cell_type='up')
 
         concat = range(2, self._meta_node_num + 2)
         geno_type = Genotype(
@@ -176,21 +201,21 @@ class NasUnetSearch(nn.Module):
 
     def forward(self, x):
 
-        weights1_down = F.softmax(self.alphas_normal_down, dim=-1)
-        weights1_up = F.softmax(self.alphas_normal_up, dim=-1)
-        weights2_down = F.softmax(self.alphas_down, dim=-1)
-        weights2_up = F.softmax(self.alphas_up, dim=-1)
+        weights_down_norm = F.softmax(self.alphas_normal_down, dim=-1)
+        weights_up_norm = F.softmax(self.alphas_normal_up, dim=-1)
+        weights_down = F.softmax(self.alphas_down, dim=-1)
+        weights_up = F.softmax(self.alphas_up, dim=-1)
 
         if len(self.device_ids) == 1:
-            return self.net(x, weights1_down, weights1_up, weights2_down, weights2_up)
+            return self.net(x, weights_down_norm, weights_up_norm, weights_down, weights_up, self.betas_down, self.betas_up)
 
         # scatter x
         xs = nn.parallel.scatter(x, self.device_ids)
         # broadcast weights
-        wnormal_down_copies = broadcast_list(weights1_down, self.device_ids)
-        wnormal_up_copies = broadcast_list(weights1_up, self.device_ids)
-        wdown_copies = broadcast_list(weights2_down, self.device_ids)
-        wup_copies = broadcast_list(weights2_up, self.device_ids)
+        wnormal_down_copies = broadcast_list(weights_down_norm, self.device_ids)
+        wnormal_up_copies = broadcast_list(weights_up_norm, self.device_ids)
+        wdown_copies = broadcast_list(weights_down, self.device_ids)
+        wup_copies = broadcast_list(weights_up, self.device_ids)
 
         # replicate modules
         replicas = nn.parallel.replicate(self.net, self.device_ids)
@@ -200,13 +225,13 @@ class NasUnetSearch(nn.Module):
 
         return nn.parallel.gather(outputs, self.device_ids[0])
 
-    def alphas(self):
-        for n, p in self._alphas:
-            yield p
+    # def alphas(self):
+    #     for n, p in self._alphas:
+    #         yield p
 
-    def named_alphas(self):
-        for n, p in self._alphas:
-            yield n, p
+    # def named_alphas(self):
+    #     for n, p in self._alphas:
+    #         yield n, p
 
 
 class Architecture(object):

@@ -13,14 +13,14 @@ searching:
     epoch: 500
 #    batch_size: 6
     batch_size: 6
-#    batch_size: 1
+#    batch_size: 2
     report_freq: 20
     n_workers: 2
-    alpha_begin: 10
+    alpha_begin: 15
     max_patience: 50
     gpu: True
     multi_gpus: True
-    sharing_normal: True
+    sharing_normal: False
     double_down_channel: False
     meta_node_num: 3
     grad_clip: 5
