@@ -1,208 +1,433 @@
-
-from .base import BaseNet
-from .fcn import FCNHead
-from util.functional import *
-from torch.nn.functional import interpolate
-
 import torch
 import torch.nn as nn
-
-def conv3x3(in_planes, out_planes):
-    "3x3 convolution with padding"
-
-    return nn.Conv2d(in_planes,
-                     out_planes,
-                     kernel_size=3,
-                     padding=1,
-                     bias=True)
+from torch.nn import init
 
 
-class UnetDownBlock(nn.Module):
-    """ Downsampling block of Unet.
+# https://github.com/Minerva-J/Pytorch-Segmentation-multi-models
+# -*- coding: utf-8 -*-
 
-        The whole architercture of Unet has a one common pattern: a block
-        that spatially downsamples the input followed by two layers of 3x3 convolutions that
-        has 'inplanes' number of input planes and 'planes' number of channels.
+def init_weights(net, init_type='normal', gain=0.02):
+    def init_func(m):
+        classname = m.__class__.__name__
+        if hasattr(m, 'weight') and (classname.find('Conv') != -1 or classname.find('Linear') != -1):
+            if init_type == 'normal':
+                init.normal_(m.weight.data, 0.0, gain)
+            elif init_type == 'xavier':
+                init.xavier_normal_(m.weight.data, gain=gain)
+            elif init_type == 'kaiming':
+                init.kaiming_normal_(m.weight.data, a=0, mode='fan_in')
+            elif init_type == 'orthogonal':
+                init.orthogonal_(m.weight.data, gain=gain)
+            else:
+                raise NotImplementedError('initialization method [%s] is not implemented' % init_type)
+            if hasattr(m, 'bias') and m.bias is not None:
+                init.constant_(m.bias.data, 0.0)
+        elif classname.find('BatchNorm2d') != -1:
+            init.normal_(m.weight.data, 1.0, gain)
+            init.constant_(m.bias.data, 0.0)
 
-    """
+    print('initialize network with %s' % init_type)
+    net.apply(init_func)
 
-    def __init__(self, inplanes, planes, predownsample_block):
-        super(UnetDownBlock, self).__init__()
 
-        self.predownsample_block = predownsample_block
-        self.conv1 = conv3x3(inplanes, planes)
-        self.relu = nn.ReLU(inplace=True)
-        self.conv2 = conv3x3(planes, planes)
+class conv_block(nn.Module):
+    def __init__(self, ch_in, ch_out):
+        super(conv_block, self).__init__()
+        self.conv = nn.Sequential(
+            nn.Conv2d(ch_in, ch_out, kernel_size=3, stride=1, padding=1, bias=True),
+            nn.BatchNorm2d(ch_out),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(ch_out, ch_out, kernel_size=3, stride=1, padding=1, bias=True),
+            nn.BatchNorm2d(ch_out),
+            nn.ReLU(inplace=True)
+        )
 
     def forward(self, x):
-        x = self.predownsample_block(x)
-        x = self.conv1(x)
-        x = self.relu(x)
-        x = self.conv2(x)
-
+        x = self.conv(x)
         return x
 
 
-class UnetUpBlock(nn.Module):
-    """ Upsampling block of Unet.
-
-        The whole architercture of Unet has a one common pattern: a block
-        that has two layers of 3x3 convolutions that
-        has 'inplanes' number of input planes and 'planes' number of channels,
-        followed by 'postupsample_block' which increases the spatial resolution
-
-    """
-
-    def __init__(self, inplanes, planes, postupsample_block=None):
-
-        super(UnetUpBlock, self).__init__()
-
-        self.conv1 = conv3x3(inplanes, planes)
-        self.relu = nn.ReLU(inplace=True)
-        self.conv2 = conv3x3(planes, planes)
-
-        if postupsample_block is None:
-
-            self.postupsample_block = torch.nn.ConvTranspose2d(in_channels=planes,
-                                                               out_channels=planes // 2,
-                                                               kernel_size=2,
-                                                               stride=2)
-        else:
-
-            self.postupsample_block = postupsample_block
+class up_conv(nn.Module):
+    def __init__(self, ch_in, ch_out):
+        super(up_conv, self).__init__()
+        self.up = nn.Sequential(
+            nn.Upsample(scale_factor=2),
+            nn.Conv2d(ch_in, ch_out, kernel_size=3, stride=1, padding=1, bias=True),
+            nn.BatchNorm2d(ch_out),
+            nn.ReLU(inplace=True)
+        )
 
     def forward(self, x):
-
-        x = self.conv1(x)
-        x = self.relu(x)
-        x = self.conv2(x)
-        x = self.postupsample_block(x)
-
+        x = self.up(x)
         return x
 
 
-class UNET(BaseNet):
-    """Unet network. ~297 ms on hd image."""
-
-    def __init__(
-        self,
-        nclass,
-        in_channels=3,
-        aux=True,
-        channel_scale=1,
-        **kwargs
-    ):
-        super(UNET, self).__init__(nclass, aux, norm_layer=nn.BatchNorm2d, **kwargs)
-
-        self.predownsample_block = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.identity_block = nn.Sequential()
-        filters = [64, 128, 256, 512, 1024]
-        filters = [int(x // channel_scale) for x in filters]
-
-        if self.aux:
-            self.auxlayer = FCNHead(filters[0], nclass, nn.BatchNorm2d)
-
-        self.block1 = UnetDownBlock(
-            predownsample_block=self.identity_block,
-            inplanes=in_channels,
-            planes=filters[0],
+class Recurrent_block(nn.Module):
+    def __init__(self, ch_out, t=2):
+        super(Recurrent_block, self).__init__()
+        self.t = t
+        self.ch_out = ch_out
+        self.conv = nn.Sequential(
+            nn.Conv2d(ch_out, ch_out, kernel_size=3, stride=1, padding=1, bias=True),
+            nn.BatchNorm2d(ch_out),
+            nn.ReLU(inplace=True)
         )
-
-        self.block2_down = UnetDownBlock(
-            predownsample_block=self.predownsample_block,
-            inplanes=filters[0],
-            planes=filters[1],
-        )
-
-        self.block3_down = UnetDownBlock(
-            predownsample_block=self.predownsample_block,
-            inplanes=filters[1],
-            planes=filters[2]
-        )
-
-        self.block4_down = UnetDownBlock(
-            predownsample_block=self.predownsample_block,
-            inplanes=filters[2],
-            planes=filters[3]
-        )
-
-        self.block5_down = UnetDownBlock(
-            predownsample_block=self.predownsample_block,
-            inplanes=filters[3],
-            planes=filters[4]
-        )
-
-        self.block1_up = torch.nn.ConvTranspose2d(in_channels=filters[4],
-                                                  out_channels=filters[3],
-                                                  kernel_size=2,
-                                                  stride=2)
-
-        self.block2_up = UnetUpBlock(
-            inplanes=filters[4],
-            planes=filters[3]
-        )
-
-        self.block3_up = UnetUpBlock(
-            inplanes=filters[3],
-            planes=filters[2]
-        )
-
-        self.block4_up = UnetUpBlock(
-            inplanes=filters[2],
-            planes=filters[1]
-        )
-
-        self.block5 = UnetUpBlock(
-            inplanes=filters[1],
-            planes=filters[0],
-            postupsample_block=self.identity_block
-        )
-
-        self.unet_head = nn.Conv2d(filters[0],
-                                    nclass,
-                                    kernel_size=1)
 
     def forward(self, x):
-        _, _, h, w = x.size()
-        input_spatial_dim = x.size()[2:]
+        for i in range(self.t):
 
-        # Left part of the U figure in the Unet paper
-        features_1s_down = self.block1(x)
-        features_2s_down = self.block2_down(features_1s_down)
-        features_4s_down = self.block3_down(features_2s_down)
-        features_8s_down = self.block4_down(features_4s_down)
+            if i == 0:
+                x1 = self.conv(x)
 
-        # Bottom part of the U figure in the Unet paper
-        features_16s = self.block5_down(features_8s_down)
+            x1 = self.conv(x + x1)
+        return x1
 
-        # Right part of the U figure in the Unet paper
-        features_8s_up = self.block1_up(features_16s)
-        features_8s_up = torch.cat([features_8s_down, features_8s_up], dim=1)
 
-        features_4s_up = self.block2_up(features_8s_up)
-        features_4s_up = torch.cat([features_4s_down, features_4s_up], dim=1)
+class RRCNN_block(nn.Module):
+    def __init__(self, ch_in, ch_out, t=2):
+        super(RRCNN_block, self).__init__()
+        self.RCNN = nn.Sequential(
+            Recurrent_block(ch_out, t=t),
+            Recurrent_block(ch_out, t=t)
+        )
+        self.Conv_1x1 = nn.Conv2d(ch_in, ch_out, kernel_size=1, stride=1, padding=0)
 
-        features_2s_up = self.block3_up(features_4s_up)
-        features_2s_up = torch.cat([features_2s_down, features_2s_up], dim=1)
+    def forward(self, x):
+        x = self.Conv_1x1(x)
+        x1 = self.RCNN(x)
+        return x + x1
 
-        features_1s_up = self.block4_up(features_2s_up)
-        features_1s_up = torch.cat([features_1s_down, features_1s_up], dim=1)
 
-        features_final = self.block5(features_1s_up)
-        output = self.unet_head(features_final)
+class single_conv(nn.Module):
+    def __init__(self, ch_in, ch_out):
+        super(single_conv, self).__init__()
+        self.conv = nn.Sequential(
+            nn.Conv2d(ch_in, ch_out, kernel_size=3, stride=1, padding=1, bias=True),
+            nn.BatchNorm2d(ch_out),
+            nn.ReLU(inplace=True)
+        )
 
-        outputs = []
-        outputs.append(output)
-        if self.aux: # use aux
-            auxout = self.auxlayer(features_final)
-            auxout = interpolate(auxout, (h,w), **self._up_kwargs)
-            outputs.append(auxout)
+    def forward(self, x):
+        x = self.conv(x)
+        return x
 
-        return outputs
+
+class Attention_block(nn.Module):
+    def __init__(self, F_g, F_l, F_int):
+        super(Attention_block, self).__init__()
+        self.W_g = nn.Sequential(
+            nn.Conv2d(F_g, F_int, kernel_size=1, stride=1, padding=0, bias=True),
+            nn.BatchNorm2d(F_int)
+        )
+
+        self.W_x = nn.Sequential(
+            nn.Conv2d(F_l, F_int, kernel_size=1, stride=1, padding=0, bias=True),
+            nn.BatchNorm2d(F_int)
+        )
+
+        self.psi = nn.Sequential(
+            nn.Conv2d(F_int, 1, kernel_size=1, stride=1, padding=0, bias=True),
+            nn.BatchNorm2d(1),
+            nn.Sigmoid()
+        )
+
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, g, x):
+        g1 = self.W_g(g)
+        x1 = self.W_x(x)
+        psi = self.relu(g1 + x1)
+        psi = self.psi(psi)
+
+        return x * psi
+
+
+class U_Net(nn.Module):
+    def __init__(self, output_ch=1, img_ch=3, **kwargs):
+        super(U_Net, self).__init__()
+
+        self.Maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
+
+        self.Conv1 = conv_block(ch_in=img_ch, ch_out=64)
+        self.Conv2 = conv_block(ch_in=64, ch_out=128)
+        self.Conv3 = conv_block(ch_in=128, ch_out=256)
+        self.Conv4 = conv_block(ch_in=256, ch_out=512)
+        self.Conv5 = conv_block(ch_in=512, ch_out=1024)
+
+        self.Up5 = up_conv(ch_in=1024, ch_out=512)
+        self.Up_conv5 = conv_block(ch_in=1024, ch_out=512)
+
+        self.Up4 = up_conv(ch_in=512, ch_out=256)
+        self.Up_conv4 = conv_block(ch_in=512, ch_out=256)
+
+        self.Up3 = up_conv(ch_in=256, ch_out=128)
+        self.Up_conv3 = conv_block(ch_in=256, ch_out=128)
+
+        self.Up2 = up_conv(ch_in=128, ch_out=64)
+        self.Up_conv2 = conv_block(ch_in=128, ch_out=64)
+
+        self.Conv_1x1 = nn.Conv2d(64, output_ch, kernel_size=1, stride=1, padding=0)
+
+    def forward(self, x):
+        # encoding path
+        x1 = self.Conv1(x)
+
+        x2 = self.Maxpool(x1)
+        x2 = self.Conv2(x2)
+
+        x3 = self.Maxpool(x2)
+        x3 = self.Conv3(x3)
+
+        x4 = self.Maxpool(x3)
+        x4 = self.Conv4(x4)
+
+        x5 = self.Maxpool(x4)
+        x5 = self.Conv5(x5)
+
+        # decoding + concat path
+        d5 = self.Up5(x5)
+        d5 = torch.cat((x4, d5), dim=1)
+
+        d5 = self.Up_conv5(d5)
+
+        d4 = self.Up4(d5)
+        d4 = torch.cat((x3, d4), dim=1)
+        d4 = self.Up_conv4(d4)
+
+        d3 = self.Up3(d4)
+        d3 = torch.cat((x2, d3), dim=1)
+        d3 = self.Up_conv3(d3)
+
+        d2 = self.Up2(d3)
+        d2 = torch.cat((x1, d2), dim=1)
+        d2 = self.Up_conv2(d2)
+
+        d1 = self.Conv_1x1(d2)
+
+        return [d1]
+
+
+class R2U_Net(nn.Module):
+    def __init__(self, img_ch=3, output_ch=1, t=2):
+        super(R2U_Net, self).__init__()
+
+        self.Maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.Upsample = nn.Upsample(scale_factor=2)
+
+        self.RRCNN1 = RRCNN_block(ch_in=img_ch, ch_out=64, t=t)
+
+        self.RRCNN2 = RRCNN_block(ch_in=64, ch_out=128, t=t)
+
+        self.RRCNN3 = RRCNN_block(ch_in=128, ch_out=256, t=t)
+
+        self.RRCNN4 = RRCNN_block(ch_in=256, ch_out=512, t=t)
+
+        self.RRCNN5 = RRCNN_block(ch_in=512, ch_out=1024, t=t)
+
+        self.Up5 = up_conv(ch_in=1024, ch_out=512)
+        self.Up_RRCNN5 = RRCNN_block(ch_in=1024, ch_out=512, t=t)
+
+        self.Up4 = up_conv(ch_in=512, ch_out=256)
+        self.Up_RRCNN4 = RRCNN_block(ch_in=512, ch_out=256, t=t)
+
+        self.Up3 = up_conv(ch_in=256, ch_out=128)
+        self.Up_RRCNN3 = RRCNN_block(ch_in=256, ch_out=128, t=t)
+
+        self.Up2 = up_conv(ch_in=128, ch_out=64)
+        self.Up_RRCNN2 = RRCNN_block(ch_in=128, ch_out=64, t=t)
+
+        self.Conv_1x1 = nn.Conv2d(64, output_ch, kernel_size=1, stride=1, padding=0)
+
+    def forward(self, x):
+        # encoding path
+        x1 = self.RRCNN1(x)
+
+        x2 = self.Maxpool(x1)
+        x2 = self.RRCNN2(x2)
+
+        x3 = self.Maxpool(x2)
+        x3 = self.RRCNN3(x3)
+
+        x4 = self.Maxpool(x3)
+        x4 = self.RRCNN4(x4)
+
+        x5 = self.Maxpool(x4)
+        x5 = self.RRCNN5(x5)
+
+        # decoding + concat path
+        d5 = self.Up5(x5)
+        d5 = torch.cat((x4, d5), dim=1)
+        d5 = self.Up_RRCNN5(d5)
+
+        d4 = self.Up4(d5)
+        d4 = torch.cat((x3, d4), dim=1)
+        d4 = self.Up_RRCNN4(d4)
+
+        d3 = self.Up3(d4)
+        d3 = torch.cat((x2, d3), dim=1)
+        d3 = self.Up_RRCNN3(d3)
+
+        d2 = self.Up2(d3)
+        d2 = torch.cat((x1, d2), dim=1)
+        d2 = self.Up_RRCNN2(d2)
+
+        d1 = self.Conv_1x1(d2)
+
+        return d1
+
+
+class AttU_Net(nn.Module):
+    def __init__(self, img_ch=3, output_ch=1):
+        super(AttU_Net, self).__init__()
+
+        self.Maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
+
+        self.Conv1 = conv_block(ch_in=img_ch, ch_out=64)
+        self.Conv2 = conv_block(ch_in=64, ch_out=128)
+        self.Conv3 = conv_block(ch_in=128, ch_out=256)
+        self.Conv4 = conv_block(ch_in=256, ch_out=512)
+        self.Conv5 = conv_block(ch_in=512, ch_out=1024)
+
+        self.Up5 = up_conv(ch_in=1024, ch_out=512)
+        self.Att5 = Attention_block(F_g=512, F_l=512, F_int=256)
+        self.Up_conv5 = conv_block(ch_in=1024, ch_out=512)
+
+        self.Up4 = up_conv(ch_in=512, ch_out=256)
+        self.Att4 = Attention_block(F_g=256, F_l=256, F_int=128)
+        self.Up_conv4 = conv_block(ch_in=512, ch_out=256)
+
+        self.Up3 = up_conv(ch_in=256, ch_out=128)
+        self.Att3 = Attention_block(F_g=128, F_l=128, F_int=64)
+        self.Up_conv3 = conv_block(ch_in=256, ch_out=128)
+
+        self.Up2 = up_conv(ch_in=128, ch_out=64)
+        self.Att2 = Attention_block(F_g=64, F_l=64, F_int=32)
+        self.Up_conv2 = conv_block(ch_in=128, ch_out=64)
+
+        self.Conv_1x1 = nn.Conv2d(64, output_ch, kernel_size=1, stride=1, padding=0)
+
+    def forward(self, x):
+        # encoding path
+        x1 = self.Conv1(x)
+
+        x2 = self.Maxpool(x1)
+        x2 = self.Conv2(x2)
+
+        x3 = self.Maxpool(x2)
+        x3 = self.Conv3(x3)
+
+        x4 = self.Maxpool(x3)
+        x4 = self.Conv4(x4)
+
+        x5 = self.Maxpool(x4)
+        x5 = self.Conv5(x5)
+
+        # decoding + concat path
+        d5 = self.Up5(x5)
+        x4 = self.Att5(g=d5, x=x4)
+        d5 = torch.cat((x4, d5), dim=1)
+        d5 = self.Up_conv5(d5)
+
+        d4 = self.Up4(d5)
+        x3 = self.Att4(g=d4, x=x3)
+        d4 = torch.cat((x3, d4), dim=1)
+        d4 = self.Up_conv4(d4)
+
+        d3 = self.Up3(d4)
+        x2 = self.Att3(g=d3, x=x2)
+        d3 = torch.cat((x2, d3), dim=1)
+        d3 = self.Up_conv3(d3)
+
+        d2 = self.Up2(d3)
+        x1 = self.Att2(g=d2, x=x1)
+        d2 = torch.cat((x1, d2), dim=1)
+        d2 = self.Up_conv2(d2)
+
+        d1 = self.Conv_1x1(d2)
+
+        return d1
+
+
+class R2AttU_Net(nn.Module):
+    def __init__(self, img_ch=3, output_ch=1, t=2):
+        super(R2AttU_Net, self).__init__()
+
+        self.Maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.Upsample = nn.Upsample(scale_factor=2)
+
+        self.RRCNN1 = RRCNN_block(ch_in=img_ch, ch_out=64, t=t)
+
+        self.RRCNN2 = RRCNN_block(ch_in=64, ch_out=128, t=t)
+
+        self.RRCNN3 = RRCNN_block(ch_in=128, ch_out=256, t=t)
+
+        self.RRCNN4 = RRCNN_block(ch_in=256, ch_out=512, t=t)
+
+        self.RRCNN5 = RRCNN_block(ch_in=512, ch_out=1024, t=t)
+
+        self.Up5 = up_conv(ch_in=1024, ch_out=512)
+        self.Att5 = Attention_block(F_g=512, F_l=512, F_int=256)
+        self.Up_RRCNN5 = RRCNN_block(ch_in=1024, ch_out=512, t=t)
+
+        self.Up4 = up_conv(ch_in=512, ch_out=256)
+        self.Att4 = Attention_block(F_g=256, F_l=256, F_int=128)
+        self.Up_RRCNN4 = RRCNN_block(ch_in=512, ch_out=256, t=t)
+
+        self.Up3 = up_conv(ch_in=256, ch_out=128)
+        self.Att3 = Attention_block(F_g=128, F_l=128, F_int=64)
+        self.Up_RRCNN3 = RRCNN_block(ch_in=256, ch_out=128, t=t)
+
+        self.Up2 = up_conv(ch_in=128, ch_out=64)
+        self.Att2 = Attention_block(F_g=64, F_l=64, F_int=32)
+        self.Up_RRCNN2 = RRCNN_block(ch_in=128, ch_out=64, t=t)
+
+        self.Conv_1x1 = nn.Conv2d(64, output_ch, kernel_size=1, stride=1, padding=0)
+
+    def forward(self, x):
+        # encoding path
+        x1 = self.RRCNN1(x)
+
+        x2 = self.Maxpool(x1)
+        x2 = self.RRCNN2(x2)
+
+        x3 = self.Maxpool(x2)
+        x3 = self.RRCNN3(x3)
+
+        x4 = self.Maxpool(x3)
+        x4 = self.RRCNN4(x4)
+
+        x5 = self.Maxpool(x4)
+        x5 = self.RRCNN5(x5)
+
+        # decoding + concat path
+        d5 = self.Up5(x5)
+        x4 = self.Att5(g=d5, x=x4)
+        d5 = torch.cat((x4, d5), dim=1)
+        d5 = self.Up_RRCNN5(d5)
+
+        d4 = self.Up4(d5)
+        x3 = self.Att4(g=d4, x=x3)
+        d4 = torch.cat((x3, d4), dim=1)
+        d4 = self.Up_RRCNN4(d4)
+
+        d3 = self.Up3(d4)
+        x2 = self.Att3(g=d3, x=x2)
+        d3 = torch.cat((x2, d3), dim=1)
+        d3 = self.Up_RRCNN3(d3)
+
+        d2 = self.Up2(d3)
+        x1 = self.Att2(g=d2, x=x1)
+        d2 = torch.cat((x1, d2), dim=1)
+        d2 = self.Up_RRCNN2(d2)
+
+        d1 = self.Conv_1x1(d2)
+
+        return d1
+
 
 def get_unet(dataset='pascal_voc', **kwargs):
     # infer number of classes
-    from util.datasets import datasets, acronyms
-    model = UNET(datasets[dataset.lower()].NUM_CLASS, datasets[dataset.lower()].IN_CHANNELS,
+    from util.datasets import datasets
+    model = U_Net(datasets[dataset.lower()].NUM_CLASS, datasets[dataset.lower()].IN_CHANNELS,
                  **kwargs)
     return model

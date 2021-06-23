@@ -39,18 +39,12 @@ class Network(object):
         parser = argparse.ArgumentParser(description='config')
 
         # Add default argument
-        parser.add_argument('--config', nargs='?', type=str, default='../configs/nas_unet/nas_unet_chaos.yml',
-                            help='Configuration file to use')
-        parser.add_argument('--model', nargs='?', type=str, default='nasunet',
-                            help='Model to train and evaluation')
-        parser.add_argument('--ft', action='store_true', default=False,
-                            help='finetuning on a different dataset')
-        parser.add_argument('--warm', nargs='?', type=int, default=0,
-                            help='warm up from pre epoch')
-        parser.add_argument('--genotype', nargs='?', type=str, default='',
-                            help='Model architecture')
-        parser.add_argument('--loss', nargs='?', type=str, default='',
-                            help='Loss function')
+        parser.add_argument('--config', nargs='?', type=str, default='../configs/nas_unet/nas_unet_chaos.yml', help='Configuration file to use')
+        parser.add_argument('--model', nargs='?', type=str, default='nasunet', help='Model to train and evaluation')
+        parser.add_argument('--ft', action='store_true', default=False, help='finetuning on a different dataset')
+        parser.add_argument('--warm', nargs='?', type=int, default=0, help='warm up from pre epoch')
+        parser.add_argument('--genotype', nargs='?', type=str, default='', help='Model architecture')
+        parser.add_argument('--loss', nargs='?', type=str, default='', help='Loss function')
 
         self.args = parser.parse_args()
 

@@ -29,7 +29,7 @@
 # SBATCH --gres=gpu:1
 
 # Memory usage (MB)
-#SBATCH --mem-per-cpu=16000
+#SBATCH --mem-per-cpu=8000
 
 # To receive an email when job completes or fails
 #SBATCH --mail-user=rche0046@student.monash.edu

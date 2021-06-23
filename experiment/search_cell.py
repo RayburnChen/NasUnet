@@ -36,8 +36,7 @@ class SearchNetwork(object):
 
     def _init_configure(self):
         parser = argparse.ArgumentParser(description='config')
-        parser.add_argument('--config', nargs='?', type=str, default='../configs/nas_unet/nas_unet_voc.yml',
-                            help='Configuration file to use')
+        parser.add_argument('--config', nargs='?', type=str, default='../configs/nas_unet/nas_unet_voc.yml', help='Configuration file to use')
 
         self.args = parser.parse_args()
 

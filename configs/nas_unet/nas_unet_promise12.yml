@@ -34,8 +34,8 @@ searching:
         lr: 3.0e-4
         weight_decay: 5.0e-3
     loss:
-        name: 'dice_sq_ce'
-#        name: 'cross_entropy'
+#        name: 'dice_sq_ce'
+        name: 'dice_ce'
         size_average: False
         aux_weight:
     resume:
@@ -45,7 +45,7 @@ training:
     depth: 5
     epoch: 3600
 #    batch_size: 30
-    batch_size: 16
+    batch_size: 4
 #    batch_size: 3
     report_freq: 10
     n_workers: 2
@@ -58,8 +58,8 @@ training:
         lr: 1.0e-3
         weight_decay: 5.0e-4
     loss:
-        name: 'dice_sq_ce'
-#        name: 'cross_entropy'
+#        name: 'dice_sq_ce'
+        name: 'dice_ce'
         aux_weight: 0
     backbone:
     lr_schedule:

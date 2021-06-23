@@ -13,7 +13,7 @@ up_kwargs = {'mode': 'bilinear', 'align_corners': True}
 __all__ = ['BaseNet', 'MultiEvalModule']
 
 class BaseNet(nn.Module):
-    def __init__(self, nclass, aux, c = None, depth=None, genotype=None, dropout_prob=0,
+    def __init__(self, nclass, aux, c=None, depth=None, genotype=None, dropout_prob=0,
                  double_down_channel=True, backbone=None, dilated=True, norm_layer=None,
                  base_size=520, crop_size=480, mean=[.485, .456, .406],std=[.229, .224, .225],
                  pb_root='/train_tiny_data/imgseg/pretrained/'):
@@ -24,6 +24,7 @@ class BaseNet(nn.Module):
         self.std = std
         self.base_size = base_size
         self.crop_size = crop_size
+        self.backbone = backbone
 
         if backbone == 'resnet50':
             self.pretrained = resnet.resnet50(pretrained=True, dilated=dilated,
@@ -42,7 +43,7 @@ class BaseNet(nn.Module):
 
     def base_forward(self, x):
         """For some model like : FCN, PSP"""
-        if self.backbone.startswith('wideresnet'):
+        if self.backbone is not None and self.backbone.startswith('wideresnet'):
             x = self.pretrained.mod1(x)
             x = self.pretrained.pool2(x)
             x = self.pretrained.mod2(x)
