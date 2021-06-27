@@ -1,3 +1,4 @@
+import torch
 from torch.functional import F
 from util.prim_ops_set import *
 from util.genotype import *
@@ -122,12 +123,6 @@ class NasUnetSearch(nn.Module):
         self.betas_down = nn.Parameter(1e-3 * torch.randn(k))
         self.betas_up = nn.Parameter(1e-3 * torch.randn(k))
 
-        # setup alphas list
-        # self._alphas = []
-        # for n, p in self.named_parameters():
-        #     if 'alphas' in n:  # TODO: it is a trick, because the parameter name is the prefix of self.alphas_xxx
-        #         self._alphas.append((n, p))
-
         self._arch_parameters = [
             self.alphas_down,
             self.alphas_up,
@@ -176,22 +171,29 @@ class NasUnetSearch(nn.Module):
         # which is different from down cells (s0 and s1 all need down operation). so when
         # parse a up cell string, the string operations is |_|*|_|...|_|, where * indicate up operation
         # mask1 and mask2 below is convenient to handle it.
+        alphas_normal_down = F.softmax(self.alphas_normal_down, dim=-1).detach().cpu()
+        alphas_down = F.softmax(self.alphas_down, dim=-1).detach().cpu()
+        alphas_normal_up = F.softmax(self.alphas_normal_up, dim=-1).detach().cpu()
+        alphas_up = F.softmax(self.alphas_up, dim=-1).detach().cpu()
+        betas_down = torch.empty(0)
+        betas_up = torch.empty(0)
+        for i in range(self._meta_node_num):
+            offset = len(betas_down)
+            betas_down_edge = F.softmax(self.betas_down[offset:offset + 2 + i], dim=-1).detach().cpu()
+            betas_up_edge = F.softmax(self.betas_up[offset:offset + 2 + i], dim=-1).detach().cpu()
+            betas_down = torch.cat([betas_down, betas_down_edge], dim=0)
+            betas_up = torch.cat([betas_up, betas_up_edge], dim=0)
+
         k = sum(1 for i in range(self._meta_node_num) for n in range(2 + i))  # total number of input node
         for j in range(k):
-            alphas_normal_down = self.alphas_normal_down.clone().detach()
-            alphas_down = self.alphas_down.clone().detach()
-            alphas_normal_up = self.alphas_normal_up.clone().detach()
-            alphas_up = self.alphas_up.clone().detach()
-            alphas_normal_down[j, :] = alphas_normal_down[j, :] * self.betas_down[j].item()
-            alphas_down[j, :] = alphas_down[j, :] * self.betas_down[j].item()
-            alphas_normal_up[j, :] = alphas_normal_up[j, :] * self.betas_up[j].item()
-            alphas_up[j, :] = alphas_up[j, :] * self.betas_up[j].item()
-        geno_parser = GenoParser(self._meta_node_num)
-        gene_down = geno_parser.parse(F.softmax(alphas_normal_down, dim=-1).detach().cpu().numpy(),
-                                      F.softmax(alphas_down, dim=-1).detach().cpu().numpy(), cell_type='down')
-        gene_up = geno_parser.parse(F.softmax(alphas_normal_up, dim=-1).detach().cpu().numpy(),
-                                    F.softmax(alphas_up, dim=-1).detach().cpu().numpy(), cell_type='up')
+            alphas_normal_down[j, :] = alphas_normal_down[j, :] * betas_down[j].item()
+            alphas_down[j, :] = alphas_down[j, :] * betas_down[j].item()
+            alphas_normal_up[j, :] = alphas_normal_up[j, :] * betas_up[j].item()
+            alphas_up[j, :] = alphas_up[j, :] * betas_up[j].item()
 
+        geno_parser = GenoParser(self._meta_node_num)
+        gene_down = geno_parser.parse(alphas_normal_down.numpy(), alphas_down.numpy(), cell_type='down')
+        gene_up = geno_parser.parse(alphas_normal_up.numpy(), alphas_up.numpy(), cell_type='up')
         concat = range(2, self._meta_node_num + 2)
         geno_type = Genotype(
             down=gene_down, down_concat=concat,
@@ -207,7 +209,8 @@ class NasUnetSearch(nn.Module):
         weights_up = F.softmax(self.alphas_up, dim=-1)
 
         if len(self.device_ids) == 1:
-            return self.net(x, weights_down_norm, weights_up_norm, weights_down, weights_up, self.betas_down, self.betas_up)
+            return self.net(x, weights_down_norm, weights_up_norm, weights_down, weights_up, self.betas_down,
+                            self.betas_up)
 
         # scatter x
         xs = nn.parallel.scatter(x, self.device_ids)

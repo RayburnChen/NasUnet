@@ -1,3 +1,4 @@
+import datetime
 import os
 import sys
 import yaml
@@ -56,7 +57,7 @@ class TestNetwork(object):
 
     def _init_logger(self):
         log_dir = '../logs/'+ self.model_name + '/test' + '/{}'.format(self.cfg['data']['dataset']) \
-                  +'/{}'.format(time.strftime('%Y%m%d-%H%M'))
+                  +'/{}'.format(datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f"))
         self.logger = get_logger(log_dir)
         print('RUNDIR: {}'.format(log_dir))
         self.logger.info('{}-Train'.format(self.model_name))

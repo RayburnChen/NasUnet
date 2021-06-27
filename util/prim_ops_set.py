@@ -280,9 +280,9 @@ class CWeightOp(BaseOp):
         # `kernel_size`, `stride`, `padding`, `dilation`
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.fc = nn.Sequential(
-            nn.Linear(in_channels, in_channels // 16),
+            nn.Linear(in_channels, 1 if in_channels < 16 else in_channels // 16),
             nn.ReLU(inplace=True),
-            nn.Linear(in_channels // 16, out_channels),
+            nn.Linear(1 if in_channels < 16 else in_channels // 16, out_channels),
             nn.Sigmoid()
         )
         if stride >= 2:

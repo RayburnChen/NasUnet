@@ -1,7 +1,9 @@
 import os
 import sys
-import yaml
 import time
+
+import yaml
+import datetime
 import shutil
 import argparse
 from tqdm import tqdm
@@ -47,7 +49,7 @@ class SearchNetwork(object):
 
     def _init_logger(self):
         log_dir = '../logs/nasunet/search' + '/{}'.format(self.cfg['data']['dataset']) + \
-                  '/search-{}'.format(time.strftime('%Y%m%d-%H%M%S'))
+                  '/search-{}'.format(datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f"))
         self.logger = get_logger(log_dir)
         self.logger.info('RUNDIR: {}'.format(log_dir))
         shutil.copy(self.args.config, log_dir)
@@ -58,13 +60,13 @@ class SearchNetwork(object):
 
     def _init_device(self):
         self.device = torch.device("cuda" if self.cfg['searching']['gpu'] else "cpu")
-        self.logger.info('seed is {}'.format(self.cfg.get('seed', 1337)))
-        np.random.seed(self.cfg.get('seed', 1337))
-        torch.manual_seed(self.cfg.get('seed', 1337))
+        self.logger.info('seed is {}'.format(self.cfg.get('seed', 0)))
+        np.random.seed(self.cfg.get('seed', 0))
+        torch.manual_seed(self.cfg.get('seed', 0))
         if self.cfg['searching']['gpu'] and torch.cuda.is_available():
             self.device_id, _ = get_gpus_memory_info()
             self.device = torch.device('cuda:{}'.format(0 if self.cfg['searching']['multi_gpus'] else self.device_id))
-            torch.cuda.manual_seed(self.cfg.get('seed', 1337))
+            torch.cuda.manual_seed(self.cfg.get('seed', 0))
             torch.cuda.set_device(self.device)
             cudnn.enabled = True
             cudnn.benchmark = True

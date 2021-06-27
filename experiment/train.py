@@ -1,7 +1,9 @@
 import os
 import sys
-import yaml
 import time
+
+import yaml
+import datetime
 import shutil
 import argparse
 from tqdm import tqdm
@@ -39,7 +41,8 @@ class Network(object):
         parser = argparse.ArgumentParser(description='config')
 
         # Add default argument
-        parser.add_argument('--config', nargs='?', type=str, default='../configs/nas_unet/nas_unet_chaos.yml', help='Configuration file to use')
+        parser.add_argument('--config', nargs='?', type=str, default='../configs/nas_unet/nas_unet_chaos.yml',
+                            help='Configuration file to use')
         parser.add_argument('--model', nargs='?', type=str, default='nasunet', help='Model to train and evaluation')
         parser.add_argument('--ft', action='store_true', default=False, help='finetuning on a different dataset')
         parser.add_argument('--warm', nargs='?', type=int, default=0, help='warm up from pre epoch')
@@ -56,7 +59,7 @@ class Network(object):
 
     def _init_logger(self):
         log_dir = '../logs/' + self.model_name + '/train' + '/{}'.format(self.cfg['data']['dataset']) \
-                  + '/{}'.format(time.strftime('%Y%m%d-%H%M%S'))
+                  + '/{}'.format(datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f"))
         self.logger = get_logger(log_dir)
         self.logger.info('RUNDIR: {}'.format(log_dir))
         self.logger.info('{}-Train'.format(self.model_name))
@@ -71,10 +74,10 @@ class Network(object):
             self.logger.info('no gpu device available')
             sys.exit(1)
 
-        self.logger.info('seed is {}'.format(self.cfg.get('seed', 1337)))
-        np.random.seed(self.cfg.get('seed', 1337))
-        torch.manual_seed(self.cfg.get('seed', 1337))
-        torch.cuda.manual_seed(self.cfg.get('seed', 1337))
+        self.logger.info('seed is {}'.format(self.cfg.get('seed', 0)))
+        np.random.seed(self.cfg.get('seed', 0))
+        torch.manual_seed(self.cfg.get('seed', 0))
+        torch.cuda.manual_seed(self.cfg.get('seed', 0))
         cudnn.enabled = True
         cudnn.benchmark = True
         self.device_id, self.gpus_info = get_gpus_memory_info()
@@ -170,7 +173,7 @@ class Network(object):
     def _check_resume(self):
         self.dur_time = 0
         self.start_epoch = 0
-        self.best_mIoU, self.best_loss, self.best_pixAcc, self.best_dice_coeff = 0, 1.0, 0, 0
+        self.best_mIoU, self.best_loss, self.best_pixAcc, self.best_dice = 0, 1.0, 0, 0
         # optionally resume from a checkpoint for model
         resume = self.cfg['training']['resume'] if self.cfg['training']['resume'] is not None else None
         if resume is not None:
@@ -183,7 +186,7 @@ class Network(object):
                     self.best_mIoU = checkpoint['best_mIoU']
                     self.best_pixAcc = checkpoint['best_pixAcc']
                     self.best_loss = checkpoint['best_loss']
-                    self.best_dice_coeff = checkpoint['best_dice_coeff']
+                    self.best_dice = checkpoint['best_dice_coeff']
                     self.model_optimizer.load_state_dict(checkpoint['model_optimizer'])
                 self.model.load_state_dict(checkpoint['model_state'])
             else:
@@ -236,7 +239,7 @@ class Network(object):
             self.val()
 
             self.logger.info('Best loss {}, pixAcc {}, mIoU {}, dice {}'.format(
-                self.best_loss, self.best_pixAcc, self.best_mIoU, self.best_dice_coeff
+                self.best_loss, self.best_pixAcc, self.best_mIoU, self.best_dice
             ))
 
             if self.epoch % self.cfg['training']['report_freq'] == 0:
@@ -250,7 +253,7 @@ class Network(object):
                     'model_optimizer': self.model_optimizer.state_dict(),
                     'best_pixAcc': self.best_pixAcc,
                     'best_mIoU': self.best_mIoU,
-                    'best_dice_coeff': self.best_dice_coeff,
+                    'best_dice_coeff': self.best_dice,
                     'best_loss': self.best_loss,
                 }, True, self.save_path)
                 self.logger.info('save checkpoint (epoch %d) in %s  dur_time: %s',
@@ -339,10 +342,11 @@ class Network(object):
                 self.metric_val.update(target, predicts[0])
 
                 if step % self.cfg['training']['report_freq'] == 0:
+                    self.logger.info('Val loss %03d %e | epoch [%d] / [%d]', step,
+                                 self.val_loss_meter.mloss(), self.epoch, self.cfg['training']['epoch'])
                     pixAcc, mIoU, dice = self.metric_val.get()
 
-                    self.logger.info('Val loss: {}, pixAcc: {}, mIoU: {}, dice: {}'.format(
-                        self.val_loss_meter.mloss(), pixAcc, mIoU, dice))
+                    self.logger.info('Val pixAcc: {}, mIoU: {}, dice: {}'.format(pixAcc, mIoU, dice))
                     tbar.set_description('val loss: %.6f, pixAcc: %.3f, mIoU: %.6f, dice: %.6f'
                                          % (self.val_loss_meter.mloss(), pixAcc, mIoU, dice))
 
@@ -359,26 +363,23 @@ class Network(object):
         # save in tensorboard scalars
         pixAcc, mIoU, dice = self.metric_val.get()
         cur_loss = self.val_loss_meter.mloss()
-        self.logger.info(
-            'Epoch {} Val loss: {}, pixAcc: {}, mIoU: {}, dice: {}'.format(self.epoch, cur_loss, pixAcc, mIoU, dice))
+        self.logger.info('Val pixAcc: {}, mIoU: {}, dice: {}'.format(pixAcc, mIoU, dice))
         self.writer.add_scalar('Val/Acc', pixAcc, self.epoch)
         self.writer.add_scalar('Val/mIoU', mIoU, self.epoch)
         self.writer.add_scalar('Val/dice', dice, self.epoch)
         self.writer.add_scalar('Val/loss', cur_loss, self.epoch)
 
         # for early-stopping
-        if self.best_loss > cur_loss or self.best_mIoU < mIoU:
+        if self.best_dice < dice or self.best_mIoU < mIoU:
+            # Store best score
             self.patience = 0
+            self.best_mIoU = mIoU
+            self.best_dice = dice
+            self.best_pixAcc = pixAcc
+            self.best_loss = cur_loss
+            self.save_best = True
         else:
             self.patience += 1
-
-        # Store best score
-        self.best_pixAcc = pixAcc if self.best_pixAcc < pixAcc else self.best_pixAcc
-        self.best_loss = cur_loss if self.best_loss > cur_loss else self.best_loss
-        if self.best_mIoU < mIoU:
-            self.best_mIoU = mIoU
-            self.best_dice_coeff = dice
-            self.save_best = True
 
     def test(self):
         self.model.eval()
