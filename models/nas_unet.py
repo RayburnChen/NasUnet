@@ -74,7 +74,7 @@ class NasUnet(BaseNet):
         super(NasUnet, self).__init__(nclass, aux, backbone, norm_layer=nn.GroupNorm)
         self._depth = depth
         self._double_down_channel = double_down_channel
-        stem_multiplier = 4
+        stem_multiplier = 2
         c_curr = stem_multiplier * c
 
         c_prev_prev, c_prev, c_curr = c_curr, c_curr, c

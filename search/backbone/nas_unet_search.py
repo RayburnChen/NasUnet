@@ -6,7 +6,7 @@ from search.backbone.cell import Cell
 
 
 class SearchULikeCNN(nn.Module):
-    def __init__(self, input_c, c, num_classes, depth, meta_node_num=4,
+    def __init__(self, input_c, c, num_classes, depth, meta_node_num=3,
                  double_down_channel=True, use_softmax_head=False):
         super(SearchULikeCNN, self).__init__()
         self._num_classes = num_classes  # 2
@@ -17,8 +17,8 @@ class SearchULikeCNN(nn.Module):
         self._double_down_channel = double_down_channel
 
         # input_c=1
-        # c=16
-        # 48, 48, 16
+        # c=32
+        # 96, 96, 32
         c_prev_prev, c_prev, c_curr = meta_node_num * c, meta_node_num * c, c
 
         # the stem need a complicate mode
