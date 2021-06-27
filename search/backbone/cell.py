@@ -12,7 +12,7 @@ class MixedOp(nn.Module):
         super(MixedOp, self).__init__()
         self._ops = nn.ModuleList()
         self._op_type = op_type
-        self.k = 2
+        self.k = 4
         self.mp = nn.MaxPool2d(2, 2)
 
         for pri in self._op_type.value:

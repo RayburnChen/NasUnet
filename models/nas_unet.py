@@ -3,6 +3,8 @@ from .fcn import FCNHead
 from .base import BaseNet
 from util.functional import *
 from torch.nn.functional import interpolate
+
+
 class BuildCell(nn.Module):
     """Build a cell from genotype"""
 
@@ -43,11 +45,11 @@ class BuildCell(nn.Module):
 
         states = [s0, s1]
         for i in range(self._num_meta_node):
-            h1 = states[self._indices[2*i]]
-            h2 = states[self._indices[2*i+1]]
+            h1 = states[self._indices[2 * i]]
+            h2 = states[self._indices[2 * i + 1]]
 
-            op1 = self._ops[2*i]
-            op2 = self._ops[2*i+1]
+            op1 = self._ops[2 * i]
+            op2 = self._ops[2 * i + 1]
 
             h1 = op1(h1)
             h2 = op2(h2)
@@ -60,9 +62,10 @@ class BuildCell(nn.Module):
             #         h2 = interpolate(h2, (height1, width1))
             #     else:
             #         h1 = interpolate(h1, (height2, width2))
-            s = h1+h2
+            s = h1 + h2
             states += [s]
         return torch.cat([states[i] for i in self._concat], dim=1)
+
 
 class NasUnet(BaseNet):
     """Construct a network"""
@@ -74,7 +77,7 @@ class NasUnet(BaseNet):
         super(NasUnet, self).__init__(nclass, aux, backbone, norm_layer=nn.GroupNorm)
         self._depth = depth
         self._double_down_channel = double_down_channel
-        stem_multiplier = 2
+        stem_multiplier = 6
         c_curr = stem_multiplier * c
 
         c_prev_prev, c_prev, c_curr = c_curr, c_curr, c
@@ -83,7 +86,7 @@ class NasUnet(BaseNet):
         self.stem0 = ConvOps(in_channels, c_prev_prev, kernel_size=1, ops_order='weight_norm')
         self.stem1 = ConvOps(in_channels, c_prev, kernel_size=3, stride=2, ops_order='weight_norm')
 
-        assert depth >= 2 , 'depth must >= 2'
+        assert depth >= 2, 'depth must >= 2'
 
         self.down_cells = nn.ModuleList()
         self.up_cells = nn.ModuleList()
@@ -93,19 +96,19 @@ class NasUnet(BaseNet):
         down_cs_nfilters += [c_prev]
         down_cs_nfilters += [c_prev_prev]
         for i in range(depth):
-            c_curr = 2 * c_curr if self._double_down_channel else c_curr  # double the number of filters
+            c_curr = int(2 * c_curr) if self._double_down_channel else c_curr  # double the number of filters
             down_cell = BuildCell(genotype, c_prev_prev, c_prev, c_curr, cell_type='down', dropout_prob=dropout_prob)
             self.down_cells += [down_cell]
-            c_prev_prev, c_prev = c_prev, down_cell._multiplier*c_curr
+            c_prev_prev, c_prev = c_prev, down_cell._multiplier * c_curr
             down_cs_nfilters += [c_prev]
 
         # create the decoder pathway and add to a list
-        for i in range(depth+1):
-            c_prev_prev = down_cs_nfilters[-(i + 2)] # the horizontal prev_prev input channel
-            up_cell = BuildCell(genotype, c_prev_prev, c_prev, c_curr, cell_type='up',  dropout_prob=dropout_prob)
+        for i in range(depth + 1):
+            c_prev_prev = down_cs_nfilters[-(i + 2)]  # the horizontal prev_prev input channel
+            up_cell = BuildCell(genotype, c_prev_prev, c_prev, c_curr, cell_type='up', dropout_prob=dropout_prob)
             self.up_cells += [up_cell]
-            c_prev = up_cell._multiplier*c_curr
-            c_curr = c_curr // 2 if self._double_down_channel else c_curr  # halve the number of filters
+            c_prev = up_cell._multiplier * c_curr
+            c_curr = int(c_curr // 2) if self._double_down_channel else c_curr  # halve the number of filters
 
         self.nas_unet_head = ConvOps(c_prev, nclass, kernel_size=1, ops_order='weight')
 
@@ -130,7 +133,7 @@ class NasUnet(BaseNet):
         for i, cell in enumerate(self.up_cells):
             # Sharing a global N*M weights matrix
             # where M : normal + up
-            s0 = down_cs[-(i+2)] # horizon input
+            s0 = down_cs[-(i + 2)]  # horizon input
             s1 = cell(s0, s1)
 
         output = self.nas_unet_head(s1)
@@ -138,18 +141,17 @@ class NasUnet(BaseNet):
         outputs = []
         outputs.append(output)
 
-        if self.aux: # use aux header
+        if self.aux:  # use aux header
             auxout = self.auxlayer(s1)
-            auxout = interpolate(auxout, (h,w), **self._up_kwargs)
+            auxout = interpolate(auxout, (h, w), **self._up_kwargs)
             outputs.append(auxout)
 
         return outputs
+
 
 def get_nas_unet(dataset='pascal_voc', **kwargs):
     # infer number of classes
     from util.datasets import datasets
     model = NasUnet(datasets[dataset.lower()].NUM_CLASS, datasets[dataset.lower()].IN_CHANNELS,
-                 **kwargs)
+                    **kwargs)
     return model
-
-
