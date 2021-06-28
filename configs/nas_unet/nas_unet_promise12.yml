@@ -44,13 +44,13 @@ training:
     init_channels: 32
     depth: 5
     epoch: 3600
-    batch_size: 26
+#    batch_size: 26
 #    batch_size: 16
-#    batch_size: 3
+    batch_size: 3
     report_freq: 10
     n_workers: 2
     multi_gpus: False
-    double_down_channel: False
+    double_down_channel: True
     grad_clip: 3
     max_patience: 100
     model_optimizer:
