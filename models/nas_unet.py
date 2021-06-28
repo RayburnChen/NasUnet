@@ -77,7 +77,7 @@ class NasUnet(BaseNet):
         super(NasUnet, self).__init__(nclass, aux, backbone, norm_layer=nn.GroupNorm)
         self._depth = depth
         self._double_down_channel = double_down_channel
-        stem_multiplier = 6
+        stem_multiplier = 5
         c_curr = stem_multiplier * c
 
         c_prev_prev, c_prev, c_curr = c_curr, c_curr, c
@@ -88,19 +88,30 @@ class NasUnet(BaseNet):
 
         assert depth >= 2, 'depth must >= 2'
 
-        self.down_cells = nn.ModuleList()
-        self.up_cells = nn.ModuleList()
-        down_cs_nfilters = []
+        self.down_blocks = nn.ModuleList()
 
-        # create the encoder pathway and add to a list
-        down_cs_nfilters += [c_prev]
-        down_cs_nfilters += [c_prev_prev]
+        num_filters = []
         for i in range(depth):
+            sub_path = []
             c_curr = int(2 * c_curr) if self._double_down_channel else c_curr  # double the number of filters
-            down_cell = BuildCell(genotype, c_prev_prev, c_prev, c_curr, cell_type='down', dropout_prob=dropout_prob)
-            self.down_cells += [down_cell]
-            c_prev_prev, c_prev = c_prev, down_cell._multiplier * c_curr
-            down_cs_nfilters += [c_prev]
+            filters = (c_prev_prev, c_prev, c_curr, 'down')
+            sub_path.append(filters)
+            c_prev_prev, c_prev = c_prev, 4 * c_curr  # down_cell._multiplier
+            num_filters.append(sub_path)
+
+
+            # down_cell = BuildCell(genotype, c_prev_prev, c_prev, c_curr, cell_type='down', dropout_prob=dropout_prob)
+            # self.down_cells += [down_cell]
+            # c_prev_prev, c_prev = c_prev, down_cell._multiplier * c_curr
+            # down_cs_nfilters += [c_prev]
+
+        for i in range(depth):
+            head_prev_prev, head_prev, head_curr, head_type = num_filters[i][0]
+            for j in range(i):
+                head_prev_prev, head_prev = head_prev, 4 * head_curr  # up_cell._multiplier
+                head_curr = int(head_curr // 2) if self._double_down_channel else head_curr  # halve the number of filters
+                filters = (head_prev_prev, head_prev, head_curr, 'up')
+                num_filters[i].append(filters)
 
         # create the decoder pathway and add to a list
         for i in range(depth + 1):
