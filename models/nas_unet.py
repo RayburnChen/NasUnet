@@ -77,14 +77,13 @@ class NasUnet(BaseNet):
         super(NasUnet, self).__init__(nclass, aux, backbone, norm_layer=nn.GroupNorm)
         self._depth = depth
         self._double_down_channel = double_down_channel
-        stem_multiplier = 4
-        c_curr = stem_multiplier * c
 
-        c_prev_prev, c_prev, c_curr = c_curr, c_curr, c
+        # 64, 32
+        c_prev, c_curr = 2*c, c
 
         # the stem need a complicate mode
-        self.stem0 = ConvOps(in_channels, c_prev_prev, kernel_size=1, ops_order='weight_norm')
-        self.stem1 = ConvOps(in_channels, c_prev, kernel_size=3, stride=2, ops_order='weight_norm')
+        # self.stem0 = ConvOps(in_channels, c_prev_prev, kernel_size=1, ops_order='weight_norm')
+        # self.stem1 = ConvOps(in_channels, c_prev, kernel_size=3, stride=2, ops_order='weight_norm')
 
         assert depth >= 2, 'depth must >= 2'
 
@@ -93,9 +92,19 @@ class NasUnet(BaseNet):
         for i in range(depth):
             sub_path = []
             up_blocks = nn.ModuleList()
-            c_curr = int(2 * c_curr) if self._double_down_channel else c_curr  # double the number of filters
-            filters = [c_prev_prev, c_prev, c_curr, 'down']
-            down_cell = BuildCell(genotype, c_prev_prev, c_prev, c_curr, cell_type='down', dropout_prob=dropout_prob)
+            if i == 0:
+                # stem0
+                filters = [in_channels, in_channels, c_curr, 'stem0']
+                down_cell = ConvOps(in_channels, 3 * c_curr, kernel_size=1, ops_order='weight_norm')
+            elif i == 1:
+                # stem1
+                c_curr = int(2 * c_curr) if self._double_down_channel else c_curr  # double the number of filters
+                filters = [in_channels, in_channels, c_curr, 'stem1']
+                down_cell = ConvOps(in_channels, 3 * c_curr, kernel_size=3, stride=2, ops_order='weight_norm')
+            else:
+                c_curr = int(2 * c_curr) if self._double_down_channel else c_curr  # double the number of filters
+                filters = [c_prev_prev, c_prev, c_curr, 'down']
+                down_cell = BuildCell(genotype, c_prev_prev, c_prev, c_curr, cell_type='down', dropout_prob=dropout_prob)
             sub_path.append(filters)
             up_blocks += [down_cell]
             c_prev_prev, c_prev = c_prev, 3 * c_curr  # down_cell._multiplier
@@ -106,12 +115,10 @@ class NasUnet(BaseNet):
             head_prev_prev, head_prev, head_curr, head_type = self.num_filters[i][0]
             for j in range(i):
                 head_prev = 3 * head_curr  # up_cell._multiplier
-                head_curr = int(
-                    head_curr // 2) if self._double_down_channel else head_curr  # halve the number of filters
-                head_prev_prev = 3 * head_curr
+                head_curr = int(head_curr // 2) if self._double_down_channel else head_curr  # halve the filters
+                head_prev_prev = 3 * self.num_filters[i - 1][j][2]
                 filters = [head_prev_prev, head_prev, head_curr, 'up']
-                up_cell = BuildCell(genotype, head_prev_prev, head_prev, head_curr, cell_type='up',
-                                    dropout_prob=dropout_prob)
+                up_cell = BuildCell(genotype, head_prev_prev, head_prev, head_curr, cell_type='up', dropout_prob=dropout_prob)
                 self.num_filters[i].append(filters)
                 self.down_blocks[i] += [up_cell]
 
@@ -123,16 +130,23 @@ class NasUnet(BaseNet):
 
     def forward(self, x):
         _, _, h, w = x.size()
-        s0, s1 = self.stem0(x), self.stem1(x)
         for i, up_blocks in enumerate(self.down_blocks):
             for j, cell in enumerate(up_blocks):
-                if j == 0:
-                    in0, in1 = s0, s1
+                if i == 0 and j == 0:
+                    s0 = cell(x)
+                    self.num_filters[i][j].append(s0)
+                elif i == 1 and j == 0:
+                    s1 = cell(x)
+                    self.num_filters[i][j].append(s1)
+                elif j == 0:
+                    ot = cell(s0, s1)
+                    self.num_filters[i][j].append(ot)
+                    s0, s1 = s1, ot
+                    # in0, in1 =
                 else:
-                    in0, in1 = self.num_filters[i-1][j-1][4], self.num_filters[i][j-1][4]
-                ot = cell(in0, in1)
-                self.num_filters[i][j].append(ot)
-            s0, s1 = s1, self.num_filters[i][0][4]
+                    in0, in1 = s0, s1
+                    ot = cell(in0, in1)
+                    self.num_filters[i][j].append(ot)
 
 
         output = self.nas_unet_head(self.num_filters[-1][-1][4])

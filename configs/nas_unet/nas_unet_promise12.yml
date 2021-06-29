@@ -41,8 +41,8 @@ searching:
     resume:
 training:
     geno_type: NASUNET
-    init_channels: 32
-    depth: 5
+    init_channels: 16
+    depth: 6
     epoch: 3600
 #    batch_size: 26
 #    batch_size: 16
