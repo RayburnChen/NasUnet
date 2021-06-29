@@ -79,7 +79,7 @@ class NasUnet(BaseNet):
         self._double_down_channel = double_down_channel
 
         # 64, 32
-        c_prev, c_curr = 2*c, c
+        c_prev, c_curr = 2 * c, c
 
         # the stem need a complicate mode
         # self.stem0 = ConvOps(in_channels, c_prev_prev, kernel_size=1, ops_order='weight_norm')
@@ -104,7 +104,8 @@ class NasUnet(BaseNet):
             else:
                 c_curr = int(2 * c_curr) if self._double_down_channel else c_curr  # double the number of filters
                 filters = [c_prev_prev, c_prev, c_curr, 'down']
-                down_cell = BuildCell(genotype, c_prev_prev, c_prev, c_curr, cell_type='down', dropout_prob=dropout_prob)
+                down_cell = BuildCell(genotype, c_prev_prev, c_prev, c_curr, cell_type='down',
+                                      dropout_prob=dropout_prob)
             sub_path.append(filters)
             up_blocks += [down_cell]
             c_prev_prev, c_prev = c_prev, 3 * c_curr  # down_cell._multiplier
@@ -118,7 +119,8 @@ class NasUnet(BaseNet):
                 head_curr = int(head_curr // 2) if self._double_down_channel else head_curr  # halve the filters
                 head_prev_prev = 3 * self.num_filters[i - 1][j][2]
                 filters = [head_prev_prev, head_prev, head_curr, 'up']
-                up_cell = BuildCell(genotype, head_prev_prev, head_prev, head_curr, cell_type='up', dropout_prob=dropout_prob)
+                up_cell = BuildCell(genotype, head_prev_prev, head_prev, head_curr, cell_type='up',
+                                    dropout_prob=dropout_prob)
                 self.num_filters[i].append(filters)
                 self.down_blocks[i] += [up_cell]
 
@@ -130,32 +132,34 @@ class NasUnet(BaseNet):
 
     def forward(self, x):
         _, _, h, w = x.size()
+        cell_out = []
+        in0_idx = 0
         for i, up_blocks in enumerate(self.down_blocks):
             for j, cell in enumerate(up_blocks):
                 if i == 0 and j == 0:
                     s0 = cell(x)
-                    self.num_filters[i][j].append(s0)
+                    cell_out.append(s0)
                 elif i == 1 and j == 0:
                     s1 = cell(x)
-                    self.num_filters[i][j].append(s1)
+                    cell_out.append(s1)
+                    in1 = s1
                 elif j == 0:
                     ot = cell(s0, s1)
-                    self.num_filters[i][j].append(ot)
-                    s0, s1 = s1, ot
-                    # in0, in1 =
+                    cell_out.append(ot)
+                    s0, s1, in1 = s1, ot, ot
                 else:
-                    in0, in1 = s0, s1
+                    in0 = cell_out[in0_idx + j - 1]
                     ot = cell(in0, in1)
-                    self.num_filters[i][j].append(ot)
+                    cell_out.append(ot)
+                    in1 = ot
+            in0_idx += i
 
+        output = self.nas_unet_head(cell_out[-1])
 
-        output = self.nas_unet_head(self.num_filters[-1][-1][4])
-
-        outputs = []
-        outputs.append(output)
+        outputs = [output]
 
         if self.aux:  # use aux header
-            auxout = self.auxlayer(self.num_filters[-1][-1][4])
+            auxout = self.auxlayer(cell_out[-1])
             auxout = interpolate(auxout, (h, w), **self._up_kwargs)
             outputs.append(auxout)
 
