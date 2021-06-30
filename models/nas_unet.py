@@ -87,11 +87,11 @@ class NasUnet(BaseNet):
 
         assert depth >= 2, 'depth must >= 2'
 
-        self.num_filters = []
-        self.down_blocks = nn.ModuleList()
+        self.blocks = nn.ModuleList()
+        num_filters = []
+        down_f = []
+        down_block = nn.ModuleList()
         for i in range(depth):
-            sub_path = []
-            up_blocks = nn.ModuleList()
             if i == 0:
                 # stem0
                 filters = [in_channels, in_channels, c_curr, 'stem0']
@@ -106,25 +106,30 @@ class NasUnet(BaseNet):
                 filters = [c_prev_prev, c_prev, c_curr, 'down']
                 down_cell = BuildCell(genotype, c_prev_prev, c_prev, c_curr, cell_type='down',
                                       dropout_prob=dropout_prob)
-            sub_path.append(filters)
-            up_blocks += [down_cell]
+            down_f.append(filters)
+            down_block += [down_cell]
             c_prev_prev, c_prev = c_prev, 3 * c_curr  # down_cell._multiplier
-            self.num_filters.append(sub_path)
-            self.down_blocks += [up_blocks]
 
-        for i in range(depth):
-            head_prev_prev, head_prev, head_curr, head_type = self.num_filters[i][0]
-            for j in range(i):
-                head_prev = 3 * head_curr  # up_cell._multiplier
-                head_curr = int(head_curr // 2) if self._double_down_channel else head_curr  # halve the filters
-                head_prev_prev = 3 * self.num_filters[i - 1][j][2]
+        num_filters.append(down_f)
+        self.blocks += [down_block]
+
+        for i in range(1, depth):
+            up_f = []
+            up_block = nn.ModuleList()
+            for j in range(depth-i):
+                _, _, head_curr, _ = num_filters[i-1][j]
+                _, _, head_prev, _ = num_filters[i-1][j+1]
+                head_prev_prev = 3 * head_curr  # up_cell._multiplier
+                head_prev = 3 * head_prev  # up_cell._multiplier
                 filters = [head_prev_prev, head_prev, head_curr, 'up']
                 up_cell = BuildCell(genotype, head_prev_prev, head_prev, head_curr, cell_type='up',
                                     dropout_prob=dropout_prob)
-                self.num_filters[i].append(filters)
-                self.down_blocks[i] += [up_cell]
+                up_f.append(filters)
+                up_block += [up_cell]
+            num_filters.append(up_f)
+            self.blocks += [up_block]
 
-        last_filters = 3 * self.num_filters[-1][-1][2]
+        last_filters = 3 * num_filters[-1][-1][2]
         self.nas_unet_head = ConvOps(last_filters, nclass, kernel_size=1, ops_order='weight')
 
         if self.aux:
@@ -133,26 +138,18 @@ class NasUnet(BaseNet):
     def forward(self, x):
         _, _, h, w = x.size()
         cell_out = []
-        in0_idx = 0
-        for i, up_blocks in enumerate(self.down_blocks):
-            for j, cell in enumerate(up_blocks):
+        for i, block in enumerate(self.blocks):
+            for j, cell in enumerate(block):
                 if i == 0 and j == 0:
-                    s0 = cell(x)
-                    cell_out.append(s0)
-                elif i == 1 and j == 0:
-                    s1 = cell(x)
-                    cell_out.append(s1)
-                    in1 = s1
-                elif j == 0:
-                    ot = cell(s0, s1)
-                    cell_out.append(ot)
-                    s0, s1, in1 = s1, ot, ot
+                    ot = cell(x)
+                elif i == 0 and j == 1:
+                    ot = cell(x)
+                elif i == 0:
+                    ot = cell(cell_out[j-2], cell_out[j-1])
                 else:
-                    in0 = cell_out[in0_idx + j - 1]
-                    ot = cell(in0, in1)
-                    cell_out.append(ot)
-                    in1 = ot
-            in0_idx += i
+                    idx = sum(range(self._depth, self._depth-(i-1))) + j
+                    ot = cell(cell_out[idx], cell_out[idx+1])
+                cell_out.append(ot)
 
         output = self.nas_unet_head(cell_out[-1])
 
