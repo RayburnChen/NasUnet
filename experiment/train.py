@@ -12,7 +12,7 @@ from torch.utils import data
 import torch.backends.cudnn as cudnn
 
 sys.path.append('..')
-from util.loss.loss import SegmentationLosses
+from util.loss.loss import SegmentationLosses, MultiSegmentationLosses
 from util.datasets import get_dataset
 from util.utils import get_logger, save_checkpoint, calc_time, store_images, gpu_memory
 from util.utils import weights_init
@@ -117,8 +117,10 @@ class Network(object):
     def _init_model(self):
 
         # Setup loss function
+        depth = self.cfg['training']['depth']
+        supervision = self.cfg['training']['deep_supervision']
         loss_name = self.args.loss if len(self.args.loss) > 0 else self.cfg['training']['loss']['name']
-        criterion = SegmentationLosses(name=loss_name)
+        criterion = MultiSegmentationLosses(loss_name, depth) if supervision else SegmentationLosses(loss_name)
         self.criterion = criterion.to(self.device)
         self.logger.info("Using loss {}".format(loss_name))
 
@@ -128,7 +130,6 @@ class Network(object):
 
         # Setup Model
         init_channels = self.cfg['training']['init_channels']
-        depth = self.cfg['training']['depth']
         if len(self.args.genotype) > 0:
             self.genotype = eval('genotype.%s' % self.args.genotype)
         else:
@@ -140,6 +141,7 @@ class Network(object):
                                        c=init_channels,
                                        depth=depth,
                                        # the below two are special for nasunet
+                                       supervision=supervision,
                                        genotype=self.genotype,
                                        double_down_channel=self.cfg['training']['double_down_channel']
                                        )
@@ -293,11 +295,11 @@ class Network(object):
 
             predicts = self.model(input)
 
-            train_loss = self.criterion(predicts[0], target)
+            train_loss = self.criterion(predicts, target)
 
             self.train_loss_meter.update(train_loss.item())
 
-            self.metric_train.update(target, predicts[0])
+            self.metric_train.update(target, predicts[-1])
 
             train_loss.backward()
 
@@ -328,11 +330,11 @@ class Network(object):
                 target = target.cuda(self.device)
                 predicts = self.model(input)
 
-                val_loss = self.criterion(predicts[0], target)
+                val_loss = self.criterion(predicts, target)
 
                 self.val_loss_meter.update(val_loss.item())
 
-                self.metric_val.update(target, predicts[0])
+                self.metric_val.update(target, predicts[-1])
 
                 if step % self.cfg['training']['report_freq'] == 0:
                     self.logger.info('Val loss %03d %e | epoch [%d] / [%d]', step,
@@ -343,7 +345,7 @@ class Network(object):
                     tbar.set_description('val loss: %.6f, pixAcc: %.3f, mIoU: %.6f, dice: %.6f'
                                          % (self.val_loss_meter.mloss(), pixAcc, mIoU, dice))
 
-        grid_image = store_images(input, predicts[0], target)
+        grid_image = store_images(input, predicts[-1], target)
         self.writer.add_image('Val', grid_image, self.epoch)
 
         # save in tensorboard scalars
@@ -381,19 +383,13 @@ class Network(object):
 
                 predicts = self.model(input)
 
-                # for cityscapes, voc, camvid
-                # if not isinstance(target, list):
-                test_loss = self.criterion(predicts[0], target)
+                test_loss = self.criterion(predicts, target)
                 self.test_loss_meter.update(test_loss.item())
-                self.metric_test.update(target, predicts[0])
-                # else:  # for promise12
-                #     N = predicts[0].shape[0]
-                #     for i in range(N):
-                #         predict_list += [torch.argmax(predicts[0], 1).cpu().numpy()[i]]
+                self.metric_test.update(target, predicts[-1])
 
         # save images
         if not isinstance(target, list):
-            grid_image = store_images(input, predicts[0], target)
+            grid_image = store_images(input, predicts[-1], target)
             self.writer.add_image('Test', grid_image, self.epoch)
             pixAcc, mIoU, dice = self.metric_test.get()
             self.logger.info('Test/loss: {}, pixAcc: {}, mIoU: {}, dice: {}'.format(

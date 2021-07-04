@@ -14,7 +14,7 @@ import torch.backends.cudnn as cudnn
 import torchvision.transforms as transform
 
 sys.path.append('..')
-from util.loss.loss import SegmentationLosses
+from util.loss.loss import SegmentationLosses, MultiSegmentationLosses
 from util.datasets import get_dataset, datasets
 from util.utils import get_logger, save_checkpoint, gpu_memory
 from util.utils import calc_time
@@ -97,16 +97,19 @@ class SearchNetwork(object):
         # Read the configure
         init_channel = self.cfg['searching']['init_channels']
         depth = self.cfg['searching']['depth']
+        supervision = self.cfg['searching']['deep_supervision']
         meta_node_num = self.cfg['searching']['meta_node_num']
+        loss_name = self.cfg['searching']['loss']['name']
 
         # Setup loss function
-        self.criterion = SegmentationLosses(name=self.cfg['searching']['loss']['name']).to(self.device)
-        self.logger.info("Using loss {}".format(self.cfg['searching']['loss']['name']))
+        self.criterion = MultiSegmentationLosses(loss_name, depth) if supervision else SegmentationLosses(loss_name)
+        self.logger.info("Using loss {}".format(loss_name))
 
         # Setup Model
         model = NasUnetSearch(self.in_channels, init_channel, self.n_classes, depth,
                               meta_node_num=meta_node_num, use_sharing=self.cfg['searching']['sharing_normal'],
                               double_down_channel=self.cfg['searching']['double_down_channel'],
+                              supervision=supervision,
                               multi_gpus=self.cfg['searching']['multi_gpus'],
                               device=self.device)
 
@@ -266,7 +269,7 @@ class SearchNetwork(object):
             train_loss = self.criterion(predicts, target)
 
             self.train_loss_meter.update(train_loss.item())
-            self.metric_train.update(target, predicts)
+            self.metric_train.update(target, predicts[-1])
 
             train_loss.backward()
             nn.utils.clip_grad_norm_(self.model.parameters(),
@@ -296,7 +299,7 @@ class SearchNetwork(object):
                 val_loss = self.criterion(predicts, target)
                 self.val_loss_meter.update(val_loss.item())
 
-                self.metric_val.update(target, predicts)
+                self.metric_val.update(target, predicts[-1])
                 if step % self.cfg['searching']['report_freq'] == 0:
                     pixAcc, mIoU, dice = self.metric_val.get()
                     loss_v = self.val_loss_meter.avg

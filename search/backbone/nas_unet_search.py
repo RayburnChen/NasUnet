@@ -7,7 +7,7 @@ from search.backbone.cell import Cell
 
 class SearchULikeCNN(nn.Module):
     def __init__(self, input_c, c, num_classes, depth, meta_node_num=3,
-                 double_down_channel=True, use_softmax_head=False):
+                 double_down_channel=True, use_softmax_head=False, supervision=False):
         super(SearchULikeCNN, self).__init__()
         self._num_classes = num_classes  # 2
         self._depth = depth  # 4
@@ -15,6 +15,7 @@ class SearchULikeCNN(nn.Module):
         self._multiplier = meta_node_num  # 3
         self._use_softmax_head = use_softmax_head
         self._double_down_channel = double_down_channel
+        self.supervision = supervision
 
         # input_c=1
         in_channels = input_c
@@ -74,6 +75,7 @@ class SearchULikeCNN(nn.Module):
 
         _, _, h, w = x.size()
         cell_out = []
+        final_out = []
         for i, block in enumerate(self.blocks):
             for j, cell in enumerate(block):
                 if i == 0 and j == 0:
@@ -87,25 +89,27 @@ class SearchULikeCNN(nn.Module):
                     in0 = torch.cat([cell_out[idx] for idx in ides], dim=1)
                     in1 = cell_out[ides[-1] + 1]
                     ot = cell(in0, in1, weights_up_norm, weights_up, betas_up)
+                    if j == 0 and self.supervision:
+                        final_out.append(ot)
                 cell_out.append(ot)
 
-        output = self.conv_segmentation(cell_out[-1])
-        if self._use_softmax_head:
-            output = self.softmax(output)
+        # if self._use_softmax_head:
+        #     output = self.softmax(output)
 
-        return output
+        final_out.append(self.conv_segmentation(cell_out[-1]))
+        return final_out
 
 
 class NasUnetSearch(nn.Module):
 
     def __init__(self, input_c, c, num_classes, depth, meta_node_num=4,
-                 use_sharing=True, double_down_channel=True, use_softmax_head=False, multi_gpus=False, device='cuda'):
+                 use_sharing=True, double_down_channel=True, use_softmax_head=False, supervision=False, multi_gpus=False, device='cuda'):
         super(NasUnetSearch, self).__init__()
         self._use_sharing = use_sharing
         self._meta_node_num = meta_node_num
 
         self.net = SearchULikeCNN(input_c, c, num_classes, depth, meta_node_num,
-                                  double_down_channel, use_softmax_head)
+                                  double_down_channel, use_softmax_head, supervision)
 
         if 'cuda' == str(device.type) and multi_gpus:
             device_ids = list(range(torch.cuda.device_count()))

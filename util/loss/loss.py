@@ -23,8 +23,23 @@ class SegmentationLosses(nn.Module):
             raise NotImplementedError
         self.smooth = np.spacing(1)
 
-    def forward(self, inputs, targets):
-        return self.loss.forward(inputs, targets)
+    def forward(self, outputs, target):
+        return self.loss(outputs[-1], target)
+
+
+class MultiSegmentationLosses(nn.Module):
+
+    def __init__(self, name, depth, weight_factors=None):
+        super(MultiSegmentationLosses, self).__init__()
+        self.loss = SegmentationLosses(name)
+        if weight_factors is None:
+            self.weight_factors = [1] * depth
+        else:
+            assert depth == len(weight_factors), "size must be same length as weight_factors"
+            self.weight_factors = weight_factors
+
+    def forward(self, outputs, target):
+        return sum(w * self.loss([ot], target) for w, ot in zip(self.weight_factors, outputs))
 
 
 class SoftDiceLoss(nn.Module):

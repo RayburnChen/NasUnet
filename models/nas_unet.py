@@ -72,11 +72,12 @@ class NasUnet(BaseNet):
 
     def __init__(self, nclass, in_channels, backbone=None, aux=False,
                  c=48, depth=5, dropout_prob=0,
-                 genotype=None, double_down_channel=False):
+                 supervision=False, genotype=None, double_down_channel=False):
 
         super(NasUnet, self).__init__(nclass, aux, backbone, norm_layer=nn.GroupNorm)
         self._depth = depth
         self._double_down_channel = double_down_channel
+        self.supervision = supervision
 
         # 64, 32
         c_prev, c_curr = 2 * c, c
@@ -131,6 +132,7 @@ class NasUnet(BaseNet):
     def forward(self, x):
         _, _, h, w = x.size()
         cell_out = []
+        final_out = []
         for i, block in enumerate(self.blocks):
             for j, cell in enumerate(block):
                 if i == 0 and j == 0:
@@ -144,13 +146,12 @@ class NasUnet(BaseNet):
                     in0 = torch.cat([cell_out[idx] for idx in ides], dim=1)
                     in1 = cell_out[ides[-1] + 1]
                     ot = cell(in0, in1)
+                    if j == 0 and self.supervision:
+                        final_out.append(ot)
                 cell_out.append(ot)
 
-        output = self.nas_unet_head(cell_out[-1])
-
-        outputs = [output]
-
-        return outputs
+        final_out.append(self.nas_unet_head(cell_out[-1]))
+        return final_out
 
 
 def get_nas_unet(dataset='pascal_voc', **kwargs):
