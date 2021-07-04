@@ -134,14 +134,9 @@ class Network(object):
         else:
             self.genotype = eval('geno_types.%s' % self.cfg['training']['geno_type'])
         self.logger.info('Using genotype: {}'.format(self.genotype))
-        # aux_weight > 0 and the loss is cross_entropy, we will use FCN header for auxiliary layer. and the aux set to True
-        # aux_weight > 0 and the loss is cross_entropy_with_dice, we will combine cross entropy loss with dice loss
-        self.aux = True if self.cfg['training']['loss']['aux_weight'] > 0 \
-                           and self.cfg['training']['loss']['name'] != 'cross_entropy_with_dice' else False
         model = get_segmentation_model(self.model_name,
                                        dataset=self.cfg['data']['dataset'],
                                        backbone=self.cfg['training']['backbone'],
-                                       aux=self.aux,
                                        c=init_channels,
                                        depth=depth,
                                        # the below two are special for nasunet
@@ -296,11 +291,9 @@ class Network(object):
             input = input.cuda(self.device)
             target = target.cuda(self.device)
 
-            # Note: if aux is True, predicts will be a list predicts = [pred, aux_pred], otherwise [pred]
-            # so predicts[0] is original pred
             predicts = self.model(input)
 
-            train_loss = self.criterion(predicts if self.aux else predicts[0], target)
+            train_loss = self.criterion(predicts[0], target)
 
             self.train_loss_meter.update(train_loss.item())
 
@@ -335,7 +328,7 @@ class Network(object):
                 target = target.cuda(self.device)
                 predicts = self.model(input)
 
-                val_loss = self.criterion(predicts if self.aux else predicts[0], target)
+                val_loss = self.criterion(predicts[0], target)
 
                 self.val_loss_meter.update(val_loss.item())
 
@@ -350,14 +343,7 @@ class Network(object):
                     tbar.set_description('val loss: %.6f, pixAcc: %.3f, mIoU: %.6f, dice: %.6f'
                                          % (self.val_loss_meter.mloss(), pixAcc, mIoU, dice))
 
-        # save images
-        # cause the predicts is a list [pred, aux_pred(may not)]
-        if len(predicts[0].shape) == 4:  #
-            pred = predicts[0]
-        else:
-            pred = predicts
-
-        grid_image = store_images(input, pred, target)
+        grid_image = store_images(input, predicts[0], target)
         self.writer.add_image('Val', grid_image, self.epoch)
 
         # save in tensorboard scalars
@@ -396,24 +382,18 @@ class Network(object):
                 predicts = self.model(input)
 
                 # for cityscapes, voc, camvid
-                if not isinstance(target, list):
-                    test_loss = self.criterion(predicts if self.aux else predicts[0], target)
-                    self.test_loss_meter.update(test_loss.item())
-                    self.metric_test.update(target, predicts[0])
-                else:  # for promise12
-                    N = predicts[0].shape[0]
-                    for i in range(N):
-                        predict_list += [torch.argmax(predicts[0], 1).cpu().numpy()[i]]
-
-        # cause the predicts is a list [pred, aux_pred(may not)]
-        if len(predicts[0].shape) == 4:  #
-            pred = predicts[0]
-        else:
-            pred = predicts
+                # if not isinstance(target, list):
+                test_loss = self.criterion(predicts[0], target)
+                self.test_loss_meter.update(test_loss.item())
+                self.metric_test.update(target, predicts[0])
+                # else:  # for promise12
+                #     N = predicts[0].shape[0]
+                #     for i in range(N):
+                #         predict_list += [torch.argmax(predicts[0], 1).cpu().numpy()[i]]
 
         # save images
         if not isinstance(target, list):
-            grid_image = store_images(input, pred, target)
+            grid_image = store_images(input, predicts[0], target)
             self.writer.add_image('Test', grid_image, self.epoch)
             pixAcc, mIoU, dice = self.metric_test.get()
             self.logger.info('Test/loss: {}, pixAcc: {}, mIoU: {}, dice: {}'.format(

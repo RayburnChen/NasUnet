@@ -128,9 +128,6 @@ class NasUnet(BaseNet):
         last_filters = 3 * num_filters[-1][-1][2]
         self.nas_unet_head = ConvOps(last_filters, nclass, kernel_size=1, ops_order='weight')
 
-        if self.aux:
-            self.auxlayer = FCNHead(c_prev, nclass, nn.BatchNorm2d)
-
     def forward(self, x):
         _, _, h, w = x.size()
         cell_out = []
@@ -152,11 +149,6 @@ class NasUnet(BaseNet):
         output = self.nas_unet_head(cell_out[-1])
 
         outputs = [output]
-
-        if self.aux:  # use aux header
-            auxout = self.auxlayer(cell_out[-1])
-            auxout = interpolate(auxout, (h, w), **self._up_kwargs)
-            outputs.append(auxout)
 
         return outputs
 
