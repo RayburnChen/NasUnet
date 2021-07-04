@@ -81,10 +81,6 @@ class NasUnet(BaseNet):
         # 64, 32
         c_prev, c_curr = 2 * c, c
 
-        # the stem need a complicate mode
-        # self.stem0 = ConvOps(in_channels, c_prev_prev, kernel_size=1, ops_order='weight_norm')
-        # self.stem1 = ConvOps(in_channels, c_prev, kernel_size=3, stride=2, ops_order='weight_norm')
-
         assert depth >= 2, 'depth must >= 2'
 
         self.blocks = nn.ModuleList()
@@ -119,7 +115,7 @@ class NasUnet(BaseNet):
             for j in range(depth-i):
                 _, _, head_curr, _ = num_filters[i-1][j]
                 _, _, head_prev, _ = num_filters[i-1][j+1]
-                head_prev_prev = 3 * head_curr  # up_cell._multiplier
+                head_prev_prev = 3 * sum([num_filters[k][j][2] for k in range(i)])  # up_cell._multiplier
                 head_prev = 3 * head_prev  # up_cell._multiplier
                 filters = [head_prev_prev, head_prev, head_curr, 'up']
                 up_cell = BuildCell(genotype, head_prev_prev, head_prev, head_curr, cell_type='up',
@@ -147,8 +143,10 @@ class NasUnet(BaseNet):
                 elif i == 0:
                     ot = cell(cell_out[j-2], cell_out[j-1])
                 else:
-                    idx = sum(range(self._depth, self._depth-(i-1))) + j
-                    ot = cell(cell_out[idx], cell_out[idx+1])
+                    ides = [sum(range(self._depth, self._depth - k)) + j for k in range(i)]
+                    in0 = torch.cat([cell_out[idx] for idx in ides], dim=1)
+                    in1 = cell_out[ides[-1] + 1]
+                    ot = cell(in0, in1)
                 cell_out.append(ot)
 
         output = self.nas_unet_head(cell_out[-1])

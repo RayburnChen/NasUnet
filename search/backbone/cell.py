@@ -59,8 +59,9 @@ class Cell(nn.Module):
         self._meta_node_num = meta_node_num
         self._multiplier = meta_node_num
         self._input_node_num = 2
+        self._cell_type = cell_type
 
-        if cell_type == 'down':
+        if self._cell_type == 'down':
             # Note: the s0 size is twice than s1!
             self.preprocess0 = ConvOps(c_prev_prev, c, kernel_size=1, stride=2, affine=False,
                                        ops_order='act_weight_norm')
@@ -70,7 +71,7 @@ class Cell(nn.Module):
 
         self._ops = nn.ModuleList()
 
-        idx_up_or_down_start = 0 if cell_type == 'down' else 1
+        idx_up_or_down_start = 0 if self._cell_type == 'down' else 1
         # i=0  j=0,1
         # i=1  j=0,1,2
         # i=2  j=0,1,2,3
@@ -81,7 +82,7 @@ class Cell(nn.Module):
                 # down cell: |_|_|_|_|*|_|_|*|*| where _ indicate down operation
                 # up cell:   |*|_|*|*|_|*|_|*|*| where _ indicate up operation
                 if idx_up_or_down_start <= j < 2:
-                    if cell_type == 'up':
+                    if self._cell_type == 'up':
                         op = MixedOp(c, stride=2, op_type=OpType.UP)
                     else:
                         op = MixedOp(c, stride=2, op_type=OpType.DOWN)

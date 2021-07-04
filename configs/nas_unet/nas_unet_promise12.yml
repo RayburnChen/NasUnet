@@ -9,11 +9,11 @@ data:
     img_cols: 'same'
 searching:
     init_channels: 32
-    depth: 4
+    depth: 5
     epoch: 500
-    batch_size: 16
-#    batch_size: 6
-#    batch_size: 4
+#    batch_size: 16
+#    batch_size: 3
+    batch_size: 1
     report_freq: 20
     n_workers: 2
     alpha_begin: 15
@@ -21,7 +21,7 @@ searching:
     gpu: True
     multi_gpus: True
     sharing_normal: False
-    double_down_channel: False
+    double_down_channel: True
     meta_node_num: 3
     grad_clip: 5
     train_portion: 0.5
@@ -41,13 +41,13 @@ searching:
     resume:
 training:
     geno_type: NASUNET
-    init_channels: 16
+    init_channels: 32
     depth: 5
     epoch: 3600
 #    batch_size: 26
 #    batch_size: 16
-    batch_size: 10
 #    batch_size: 3
+    batch_size: 1
     report_freq: 10
     n_workers: 2
     multi_gpus: False

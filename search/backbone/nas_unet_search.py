@@ -17,74 +17,83 @@ class SearchULikeCNN(nn.Module):
         self._double_down_channel = double_down_channel
 
         # input_c=1
+        in_channels = input_c
         # c=32
-        # 96, 96, 32
-        c_prev_prev, c_prev, c_curr = meta_node_num * c, meta_node_num * c, c
-
-        # the stem need a complicate mode
-        # stem0 is a normal block for 1x1 convolution
-        # stem1 is a reduce block for 3x3 convolution 2 stride
-        self.stem0 = ConvOps(input_c, c_prev_prev, kernel_size=1, ops_order='weight_norm')
-        self.stem1 = ConvOps(input_c, c_prev, kernel_size=3, stride=2, ops_order='weight_norm')
+        # 64, 32
+        c_prev, c_curr = 2 * c, c
 
         assert depth >= 2, 'depth must >= 2'
 
-        self.down_cells = nn.ModuleList()
-        self.up_cells = nn.ModuleList()
-
-        down_cs_nfilters = []
-
-        # create the encoder pathway and add to a list
-        down_cs_nfilters += [c_prev]
-        down_cs_nfilters += [c_prev_prev]
+        self.blocks = nn.ModuleList()
+        num_filters = []
+        down_f = []
+        down_block = nn.ModuleList()
         for i in range(depth):
-            c_curr = 2 * c_curr if self._double_down_channel else c_curr  # double the number of filters
-            down_cell = Cell(meta_node_num, c_prev_prev, c_prev, c_curr, cell_type='down')
-            self.down_cells += [down_cell]
-            c_prev_prev, c_prev = c_prev, self._multiplier * c_curr
-            down_cs_nfilters += [c_prev]
+            if i == 0:
+                # stem0
+                filters = [in_channels, in_channels, c_curr, 'stem0']
+                down_cell = ConvOps(in_channels, 3 * c_curr, kernel_size=1, ops_order='weight_norm')
+            elif i == 1:
+                # stem1
+                c_curr = int(2 * c_curr) if self._double_down_channel else c_curr  # double the number of filters
+                filters = [in_channels, in_channels, c_curr, 'stem1']
+                down_cell = ConvOps(in_channels, 3 * c_curr, kernel_size=3, stride=2, ops_order='weight_norm')
+            else:
+                c_curr = int(2 * c_curr) if self._double_down_channel else c_curr  # double the number of filters
+                filters = [c_prev_prev, c_prev, c_curr, 'down']
+                down_cell = Cell(meta_node_num, c_prev_prev, c_prev, c_curr, cell_type='down')
+            down_f.append(filters)
+            down_block += [down_cell]
+            c_prev_prev, c_prev = c_prev, 3 * c_curr  # down_cell._multiplier
 
-        # create the decoder pathway and add to a list
-        # TODO: the prev_prev channel and prev channel is the same for decoder pathway
-        for i in range(depth + 1):
-            c_prev_prev = down_cs_nfilters[-(i + 2)]
-            up_cell = Cell(meta_node_num, c_prev_prev, c_prev, c_curr, cell_type='up')
-            self.up_cells += [up_cell]
-            c_prev = self._multiplier * c_curr
-            # c_prev_prev, c_prev = down_cs_nfilters[-(i+2)] if self._double_down_channel else\
-            #                           c_prev, self._multiplier*c_curr
-            c_curr = c_curr // 2 if self._double_down_channel else c_curr  # halve the number of filters
+        num_filters.append(down_f)
+        self.blocks += [down_block]
 
-        self.conv_segmentation = ConvOps(c_prev, num_classes, kernel_size=1, dropout_rate=0.1, ops_order='weight')
+        for i in range(1, depth):
+            up_f = []
+            up_block = nn.ModuleList()
+            for j in range(depth - i):
+                _, _, head_curr, _ = num_filters[i - 1][j]
+                _, _, head_prev, _ = num_filters[i - 1][j + 1]
+                head_prev_prev = 3 * sum([num_filters[k][j][2] for k in range(i)])  # up_cell._multiplier
+                head_prev = 3 * head_prev  # up_cell._multiplier
+                filters = [head_prev_prev, head_prev, head_curr, 'up']
+                up_cell = Cell(meta_node_num, head_prev_prev, head_prev, head_curr, cell_type='up')
+                up_f.append(filters)
+                up_block += [up_cell]
+            num_filters.append(up_f)
+            self.blocks += [up_block]
+
+        last_filters = 3 * num_filters[-1][-1][2]
+        self.conv_segmentation = ConvOps(last_filters, num_classes, kernel_size=1, ops_order='weight')
 
         if use_softmax_head:
             self.softmax = nn.LogSoftmax(dim=1)
 
     def forward(self, x, weights_down_norm, weights_up_norm, weights_down, weights_up, betas_down, betas_up):
-        s0, s1 = self.stem0(x), self.stem1(x)
-        down_cs = []
 
-        # encoder pathway
-        down_cs.append(s0)  # the s0 has original image size!!
-        down_cs.append(s1)  # the s1 has 1/2 image size!!
-        for i, cell in enumerate(self.down_cells):
-            # Sharing a global N*M weights matrix
-            # where M : normal + down
-            s0, s1 = s1, cell(s0, s1, weights_down_norm, weights_down, betas_down)
-            down_cs.append(s1)
+        _, _, h, w = x.size()
+        cell_out = []
+        for i, block in enumerate(self.blocks):
+            for j, cell in enumerate(block):
+                if i == 0 and j == 0:
+                    ot = cell(x)
+                elif i == 0 and j == 1:
+                    ot = cell(x)
+                elif i == 0:
+                    ot = cell(cell_out[j - 2], cell_out[j - 1], weights_down_norm, weights_down, betas_down)
+                else:
+                    ides = [sum(range(self._depth, self._depth - k)) + j for k in range(i)]
+                    in0 = torch.cat([cell_out[idx] for idx in ides], dim=1)
+                    in1 = cell_out[ides[-1] + 1]
+                    ot = cell(in0, in1, weights_up_norm, weights_up, betas_up)
+                cell_out.append(ot)
 
-        # decoder pathway
-        for i, cell in enumerate(self.up_cells):
-            # Sharing a global N*M weights matrix
-            # where M : normal + up
-            s0 = down_cs[-(i + 2)]  # horizon input
-            s1 = cell(s0, s1, weights_up_norm, weights_up, betas_up)
-
-        x = self.conv_segmentation(s1)
+        output = self.conv_segmentation(cell_out[-1])
         if self._use_softmax_head:
-            x = self.softmax(x)
+            output = self.softmax(output)
 
-        return x
+        return output
 
 
 class NasUnetSearch(nn.Module):
