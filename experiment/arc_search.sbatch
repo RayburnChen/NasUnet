@@ -47,7 +47,6 @@
 # Use reserved node to run job when a node reservation is made for you already
 # SBATCH --reservation=reservation_name
 
-
 # Command to run a gpu job
 # For example:
 
