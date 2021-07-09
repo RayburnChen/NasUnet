@@ -71,3 +71,4 @@ python ./search_cell.py --config ../configs/nas_unet/nas_unet_promise12.yml
 
 nvidia-smi
 # deviceQuery
+
