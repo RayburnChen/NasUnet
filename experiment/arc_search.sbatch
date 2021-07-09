@@ -54,6 +54,7 @@
 
 
 # module load anaconda
+
 module load anaconda/2019.03-Python3.7-gcc5
 sleep 5
 python -V
