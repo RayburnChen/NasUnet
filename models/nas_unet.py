@@ -77,7 +77,8 @@ class NasUnet(BaseNet):
         super(NasUnet, self).__init__(nclass, aux, backbone, norm_layer=nn.GroupNorm)
         self._depth = depth
         self._double_down_channel = double_down_channel
-        self.supervision = supervision
+        self._supervision = supervision
+        self._multiplier = len(genotype.down_concat)
 
         # 64, 32
         c_prev, c_curr = 2 * c, c
@@ -92,12 +93,12 @@ class NasUnet(BaseNet):
             if i == 0:
                 # stem0
                 filters = [in_channels, in_channels, c_curr, 'stem0']
-                down_cell = ConvOps(in_channels, 3 * c_curr, kernel_size=1, ops_order='weight_norm')
+                down_cell = ConvOps(in_channels, self._multiplier * c_curr, kernel_size=1, ops_order='weight_norm')
             elif i == 1:
                 # stem1
                 c_curr = int(2 * c_curr) if self._double_down_channel else c_curr  # double the number of filters
                 filters = [in_channels, in_channels, c_curr, 'stem1']
-                down_cell = ConvOps(in_channels, 3 * c_curr, kernel_size=3, stride=2, ops_order='weight_norm')
+                down_cell = ConvOps(in_channels, self._multiplier * c_curr, kernel_size=3, stride=2, ops_order='weight_norm')
             else:
                 c_curr = int(2 * c_curr) if self._double_down_channel else c_curr  # double the number of filters
                 filters = [c_prev_prev, c_prev, c_curr, 'down']
@@ -105,7 +106,7 @@ class NasUnet(BaseNet):
                                       dropout_prob=dropout_prob)
             down_f.append(filters)
             down_block += [down_cell]
-            c_prev_prev, c_prev = c_prev, 3 * c_curr  # down_cell._multiplier
+            c_prev_prev, c_prev = c_prev, self._multiplier * c_curr  # down_cell._multiplier
 
         num_filters.append(down_f)
         self.blocks += [down_block]
@@ -116,9 +117,9 @@ class NasUnet(BaseNet):
             for j in range(depth-i):
                 _, _, head_curr, _ = num_filters[i-1][j]
                 _, _, head_prev, _ = num_filters[i-1][j+1]
-                head_prev_prev = 3 * sum([num_filters[i-1][j][2]])  # up_cell._multiplier
-                # head_prev_prev = 3 * sum([num_filters[k][j][2] for k in range(i)])  # up_cell._multiplier
-                head_prev = 3 * head_prev  # up_cell._multiplier
+                head_prev_prev = self._multiplier * sum([num_filters[i-1][j][2]])  # up_cell._multiplier
+                # head_prev_prev = self._multiplier * sum([num_filters[k][j][2] for k in range(i)])  # up_cell._multiplier
+                head_prev = self._multiplier * head_prev  # up_cell._multiplier
                 filters = [head_prev_prev, head_prev, head_curr, 'up']
                 up_cell = BuildCell(genotype, head_prev_prev, head_prev, head_curr, cell_type='up',
                                     dropout_prob=dropout_prob)
@@ -127,7 +128,7 @@ class NasUnet(BaseNet):
             num_filters.append(up_f)
             self.blocks += [up_block]
 
-        last_filters = 3 * num_filters[-1][-1][2]
+        last_filters = self._multiplier * num_filters[-1][-1][2]
         self.nas_unet_head = ConvOps(last_filters, nclass, kernel_size=1, ops_order='weight')
 
     def forward(self, x):
@@ -148,7 +149,7 @@ class NasUnet(BaseNet):
                     in0 = torch.cat([cell_out[idx] for idx in ides], dim=1)
                     in1 = cell_out[ides[-1] + 1]
                     ot = cell(in0, in1)
-                    if j == 0 and self.supervision:
+                    if j == 0 and self._supervision:
                         final_out.append(ot)
                 cell_out.append(ot)
 

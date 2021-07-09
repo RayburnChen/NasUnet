@@ -15,7 +15,7 @@ class SearchULikeCNN(nn.Module):
         self._multiplier = meta_node_num  # 3
         self._use_softmax_head = use_softmax_head
         self._double_down_channel = double_down_channel
-        self.supervision = supervision
+        self._supervision = supervision
 
         # input_c=1
         in_channels = input_c
@@ -33,19 +33,19 @@ class SearchULikeCNN(nn.Module):
             if i == 0:
                 # stem0
                 filters = [in_channels, in_channels, c_curr, 'stem0']
-                down_cell = ConvOps(in_channels, 3 * c_curr, kernel_size=1, ops_order='weight_norm')
+                down_cell = ConvOps(in_channels, self._multiplier * c_curr, kernel_size=1, ops_order='weight_norm')
             elif i == 1:
                 # stem1
                 c_curr = int(2 * c_curr) if self._double_down_channel else c_curr  # double the number of filters
                 filters = [in_channels, in_channels, c_curr, 'stem1']
-                down_cell = ConvOps(in_channels, 3 * c_curr, kernel_size=3, stride=2, ops_order='weight_norm')
+                down_cell = ConvOps(in_channels, self._multiplier * c_curr, kernel_size=3, stride=2, ops_order='weight_norm')
             else:
                 c_curr = int(2 * c_curr) if self._double_down_channel else c_curr  # double the number of filters
                 filters = [c_prev_prev, c_prev, c_curr, 'down']
                 down_cell = Cell(meta_node_num, c_prev_prev, c_prev, c_curr, cell_type='down')
             down_f.append(filters)
             down_block += [down_cell]
-            c_prev_prev, c_prev = c_prev, 3 * c_curr  # down_cell._multiplier
+            c_prev_prev, c_prev = c_prev, self._multiplier * c_curr  # down_cell._multiplier
 
         num_filters.append(down_f)
         self.blocks += [down_block]
@@ -56,9 +56,9 @@ class SearchULikeCNN(nn.Module):
             for j in range(depth - i):
                 _, _, head_curr, _ = num_filters[i - 1][j]
                 _, _, head_prev, _ = num_filters[i - 1][j + 1]
-                head_prev_prev = 3 * sum([num_filters[i-1][j][2]])  # up_cell._multiplier
-                # head_prev_prev = 3 * sum([num_filters[k][j][2] for k in range(i)])  # up_cell._multiplier
-                head_prev = 3 * head_prev  # up_cell._multiplier
+                head_prev_prev = self._multiplier * sum([num_filters[i-1][j][2]])  # up_cell._multiplier
+                # head_prev_prev = self._multiplier * sum([num_filters[k][j][2] for k in range(i)])  # up_cell._multiplier
+                head_prev = self._multiplier * head_prev  # up_cell._multiplier
                 filters = [head_prev_prev, head_prev, head_curr, 'up']
                 up_cell = Cell(meta_node_num, head_prev_prev, head_prev, head_curr, cell_type='up')
                 up_f.append(filters)
@@ -66,7 +66,7 @@ class SearchULikeCNN(nn.Module):
             num_filters.append(up_f)
             self.blocks += [up_block]
 
-        last_filters = 3 * num_filters[-1][-1][2]
+        last_filters = self._multiplier * num_filters[-1][-1][2]
         self.conv_segmentation = ConvOps(last_filters, num_classes, kernel_size=1, ops_order='weight')
 
         if use_softmax_head:
@@ -91,7 +91,7 @@ class SearchULikeCNN(nn.Module):
                     in0 = torch.cat([cell_out[idx] for idx in ides], dim=1)
                     in1 = cell_out[ides[-1] + 1]
                     ot = cell(in0, in1, weights_up_norm, weights_up, betas_up)
-                    if j == 0 and self.supervision:
+                    if j == 0 and self._supervision:
                         final_out.append(ot)
                 cell_out.append(ot)
 
