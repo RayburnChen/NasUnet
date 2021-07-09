@@ -80,8 +80,9 @@ class NasUnet(BaseNet):
         self._supervision = supervision
         self._multiplier = len(genotype.down_concat)
 
+        double_down = 2 if self._double_down_channel else 1
         # 64, 32
-        c_prev, c_curr = 2 * c, c
+        c_prev, c_curr = double_down * c, c
 
         assert depth >= 2, 'depth must >= 2'
 
@@ -96,11 +97,11 @@ class NasUnet(BaseNet):
                 down_cell = ConvOps(in_channels, self._multiplier * c_curr, kernel_size=1, ops_order='weight_norm')
             elif i == 1:
                 # stem1
-                c_curr = int(2 * c_curr) if self._double_down_channel else c_curr  # double the number of filters
+                c_curr = int(double_down * c_curr)
                 filters = [in_channels, in_channels, c_curr, 'stem1']
                 down_cell = ConvOps(in_channels, self._multiplier * c_curr, kernel_size=3, stride=2, ops_order='weight_norm')
             else:
-                c_curr = int(2 * c_curr) if self._double_down_channel else c_curr  # double the number of filters
+                c_curr = int(double_down * c_curr)
                 filters = [c_prev_prev, c_prev, c_curr, 'down']
                 down_cell = BuildCell(genotype, c_prev_prev, c_prev, c_curr, cell_type='down',
                                       dropout_prob=dropout_prob)
@@ -144,8 +145,8 @@ class NasUnet(BaseNet):
                 elif i == 0:
                     ot = cell(cell_out[j-2], cell_out[j-1])
                 else:
-                    ides = [sum(range(self._depth, self._depth - i+1)) + j]
-                    # ides = [sum(range(self._depth, self._depth - k)) + j for k in range(i)]
+                    # ides = [sum(range(self._depth, self._depth - i+1)) + j]
+                    ides = [sum(range(self._depth, self._depth - k)) + j for k in range(i)]
                     in0 = torch.cat([cell_out[idx] for idx in ides], dim=1)
                     in1 = cell_out[ides[-1] + 1]
                     ot = cell(in0, in1)
