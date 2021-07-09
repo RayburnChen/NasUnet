@@ -56,8 +56,8 @@ class SearchULikeCNN(nn.Module):
             for j in range(depth - i):
                 _, _, head_curr, _ = num_filters[i - 1][j]
                 _, _, head_prev, _ = num_filters[i - 1][j + 1]
-                head_prev_prev = self._multiplier * sum([num_filters[i-1][j][2]])  # up_cell._multiplier
-                # head_prev_prev = self._multiplier * sum([num_filters[k][j][2] for k in range(i)])  # up_cell._multiplier
+                # head_prev_prev = self._multiplier * sum([num_filters[i-1][j][2]])  # up_cell._multiplier
+                head_prev_prev = self._multiplier * sum([num_filters[k][j][2] for k in range(i)])  # up_cell._multiplier
                 head_prev = self._multiplier * head_prev  # up_cell._multiplier
                 filters = [head_prev_prev, head_prev, head_curr, 'up']
                 up_cell = Cell(meta_node_num, head_prev_prev, head_prev, head_curr, cell_type='up')
