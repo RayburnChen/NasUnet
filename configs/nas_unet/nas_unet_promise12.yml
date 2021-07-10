@@ -52,7 +52,7 @@ training:
     n_workers: 2
     multi_gpus: False
     double_down_channel: False
-    deep_supervision: True
+    deep_supervision: False
     grad_clip: 3
     max_patience: 100
     model_optimizer:
