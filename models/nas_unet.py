@@ -144,10 +144,13 @@ class NasUnet(BaseNet):
                     in1 = cell_out[ides[-1] + 1]
                     ot = cell(in0, in1)
                     if j == 0 and self._supervision:
-                        final_out.append(ot)
+                        final_out.append(self.nas_unet_head(ot))
                 cell_out.append(ot)
 
-        final_out.append(self.nas_unet_head(cell_out[-1]))
+        if not self._supervision:
+            final_out.append(self.nas_unet_head(cell_out[-1]))
+
+        del cell_out
         return final_out
 
 

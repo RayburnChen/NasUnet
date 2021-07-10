@@ -12,17 +12,17 @@ searching:
     depth: 5
     epoch: 500
 #    batch_size: 16
-    batch_size: 6
+    batch_size: 3
 #    batch_size: 1
     report_freq: 20
     n_workers: 2
     alpha_begin: 15
     max_patience: 50
-    deep_supervision: False
     gpu: True
     multi_gpus: True
     sharing_normal: False
     double_down_channel: False
+    deep_supervision: True
     meta_node_num: 3
     grad_clip: 5
     train_portion: 0.5
@@ -45,16 +45,16 @@ training:
     depth: 5
     epoch: 3600
 #    batch_size: 26
-    batch_size: 16
-#    batch_size: 3
+#    batch_size: 16
+    batch_size: 3
 #    batch_size: 1
     report_freq: 10
     n_workers: 2
     multi_gpus: False
     double_down_channel: False
+    deep_supervision: True
     grad_clip: 3
     max_patience: 100
-    deep_supervision: False
     model_optimizer:
         name: 'adam'
         lr: 1.0e-3
