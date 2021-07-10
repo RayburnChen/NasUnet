@@ -8,15 +8,15 @@ from torch.nn.functional import interpolate
 class BuildCell(nn.Module):
     """Build a cell from genotype"""
 
-    def __init__(self, genotype, c_prev_prev, c_prev, c, cell_type, dropout_prob=0):
+    def __init__(self, genotype, c_in0, c_in1, c, cell_type, dropout_prob=0):
         super(BuildCell, self).__init__()
 
         if cell_type == 'down':
             # Note: the s0 size is twice than s1!
-            self.preprocess0 = ConvOps(c_prev_prev, c, kernel_size=1, stride=2, ops_order='act_weight_norm')
+            self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, ops_order='act_weight_norm')
         else:
-            self.preprocess0 = ConvOps(c_prev_prev, c, kernel_size=1, ops_order='act_weight_norm')
-        self.preprocess1 = ConvOps(c_prev, c, kernel_size=1, ops_order='act_weight_norm')
+            self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, ops_order='act_weight_norm')
+        self.preprocess1 = ConvOps(c_in1, c, kernel_size=1, ops_order='act_weight_norm')
 
         if cell_type == 'up':
             op_names, idx = zip(*genotype.up)
@@ -80,34 +80,29 @@ class NasUnet(BaseNet):
         self._supervision = supervision
         self._multiplier = len(genotype.down_concat)
 
-        double_down = 2 if self._double_down_channel else 1
-        # 64, 32
-        c_prev, c_curr = double_down * c, c
-
         assert depth >= 2, 'depth must >= 2'
+        double_down = 2 if self._double_down_channel else 1
+        # 192, 192, 64
+        c_in0, c_in1, c_curr = self._multiplier * c, self._multiplier * c, c
 
         self.blocks = nn.ModuleList()
+        self.stem0 = ConvOps(in_channels, c_in0, kernel_size=1, ops_order='weight_norm')
+        self.stem1 = ConvOps(in_channels, c_in1, kernel_size=3, stride=2, use_transpose=True, ops_order='weight_norm')
+
         num_filters = []
         down_f = []
         down_block = nn.ModuleList()
         for i in range(depth):
             if i == 0:
-                # stem0
                 filters = [in_channels, in_channels, c_curr, 'stem0']
-                down_cell = ConvOps(in_channels, self._multiplier * c_curr, kernel_size=1, ops_order='weight_norm')
-            elif i == 1:
-                # stem1
-                c_curr = int(double_down * c_curr)
-                filters = [in_channels, in_channels, c_curr, 'stem1']
-                down_cell = ConvOps(in_channels, self._multiplier * c_curr, kernel_size=3, stride=2, ops_order='weight_norm')
+                down_cell = self.stem0
             else:
                 c_curr = int(double_down * c_curr)
-                filters = [c_prev_prev, c_prev, c_curr, 'down']
-                down_cell = BuildCell(genotype, c_prev_prev, c_prev, c_curr, cell_type='down',
-                                      dropout_prob=dropout_prob)
+                filters = [c_in0, c_in1, c_curr, 'down']
+                down_cell = BuildCell(genotype, c_in0, c_in1, c_curr, cell_type='down', dropout_prob=dropout_prob)
             down_f.append(filters)
             down_block += [down_cell]
-            c_prev_prev, c_prev = c_prev, self._multiplier * c_curr  # down_cell._multiplier
+            c_in0, c_in1 = c_in1, self._multiplier * c_curr  # down_cell._multiplier
 
         num_filters.append(down_f)
         self.blocks += [down_block]
@@ -115,15 +110,14 @@ class NasUnet(BaseNet):
         for i in range(1, depth):
             up_f = []
             up_block = nn.ModuleList()
-            for j in range(depth-i):
-                _, _, head_curr, _ = num_filters[i-1][j]
-                _, _, head_prev, _ = num_filters[i-1][j+1]
-                # head_prev_prev = self._multiplier * sum([num_filters[i-1][j][2]])  # up_cell._multiplier
-                head_prev_prev = self._multiplier * sum([num_filters[k][j][2] for k in range(i)])  # up_cell._multiplier
-                head_prev = self._multiplier * head_prev  # up_cell._multiplier
-                filters = [head_prev_prev, head_prev, head_curr, 'up']
-                up_cell = BuildCell(genotype, head_prev_prev, head_prev, head_curr, cell_type='up',
-                                    dropout_prob=dropout_prob)
+            for j in range(depth - i):
+                _, _, head_curr, _ = num_filters[i - 1][j]
+                _, _, head_down, _ = num_filters[i - 1][j + 1]
+                # head_in0 = self._multiplier * sum([num_filters[i-1][j][2]])  # up_cell._multiplier
+                head_in0 = self._multiplier * sum([num_filters[k][j][2] for k in range(i)])
+                head_in1 = self._multiplier * head_down
+                filters = [head_in0, head_in1, head_curr, 'up']
+                up_cell = BuildCell(genotype, head_in0, head_in1, head_curr, cell_type='up', dropout_prob=dropout_prob)
                 up_f.append(filters)
                 up_block += [up_cell]
             num_filters.append(up_f)
@@ -133,7 +127,6 @@ class NasUnet(BaseNet):
         self.nas_unet_head = ConvOps(last_filters, nclass, kernel_size=1, ops_order='weight')
 
     def forward(self, x):
-        _, _, h, w = x.size()
         cell_out = []
         final_out = []
         for i, block in enumerate(self.blocks):
@@ -141,9 +134,9 @@ class NasUnet(BaseNet):
                 if i == 0 and j == 0:
                     ot = cell(x)
                 elif i == 0 and j == 1:
-                    ot = cell(x)
+                    ot = cell(self.stem1(x), cell_out[j - 1])
                 elif i == 0:
-                    ot = cell(cell_out[j-2], cell_out[j-1])
+                    ot = cell(cell_out[j - 2], cell_out[j - 1])
                 else:
                     # ides = [sum(range(self._depth, self._depth - i+1)) + j]
                     ides = [sum(range(self._depth, self._depth - k)) + j for k in range(i)]

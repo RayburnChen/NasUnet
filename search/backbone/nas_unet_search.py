@@ -6,6 +6,7 @@ from search.backbone.cell import Cell
 
 
 class SearchULikeCNN(nn.Module):
+
     def __init__(self, input_c, c, num_classes, depth, meta_node_num=3,
                  double_down_channel=True, use_softmax_head=False, supervision=False):
         super(SearchULikeCNN, self).__init__()
@@ -17,37 +18,30 @@ class SearchULikeCNN(nn.Module):
         self._double_down_channel = double_down_channel
         self._supervision = supervision
 
-        # input_c=1
         in_channels = input_c
-
-        double_down = 2 if self._double_down_channel else 1
-        # c=32
-        # 64, 32
-        c_prev, c_curr = double_down * c, c
-
         assert depth >= 2, 'depth must >= 2'
+        double_down = 2 if self._double_down_channel else 1
+        # 192, 192, 64
+        c_in0, c_in1, c_curr = self._multiplier * c, self._multiplier * c, c
 
         self.blocks = nn.ModuleList()
+        self.stem0 = ConvOps(in_channels, c_in0, kernel_size=1, ops_order='weight_norm')
+        self.stem1 = ConvOps(in_channels, c_in1, kernel_size=3, stride=2, use_transpose=True, ops_order='weight_norm')
+
         num_filters = []
         down_f = []
         down_block = nn.ModuleList()
         for i in range(depth):
             if i == 0:
-                # stem0
                 filters = [in_channels, in_channels, c_curr, 'stem0']
-                down_cell = ConvOps(in_channels, self._multiplier * c_curr, kernel_size=1, ops_order='weight_norm')
-            elif i == 1:
-                # stem1
-                c_curr = int(double_down * c_curr)
-                filters = [in_channels, in_channels, c_curr, 'stem1']
-                down_cell = ConvOps(in_channels, self._multiplier * c_curr, kernel_size=3, stride=2, ops_order='weight_norm')
+                down_cell = self.stem0
             else:
                 c_curr = int(double_down * c_curr)
-                filters = [c_prev_prev, c_prev, c_curr, 'down']
-                down_cell = Cell(meta_node_num, c_prev_prev, c_prev, c_curr, cell_type='down')
+                filters = [c_in0, c_in1, c_curr, 'down']
+                down_cell = Cell(meta_node_num, c_in0, c_in1, c_curr, cell_type='down')
             down_f.append(filters)
             down_block += [down_cell]
-            c_prev_prev, c_prev = c_prev, self._multiplier * c_curr  # down_cell._multiplier
+            c_in0, c_in1 = c_in1, self._multiplier * c_curr  # down_cell._multiplier
 
         num_filters.append(down_f)
         self.blocks += [down_block]
@@ -57,12 +51,12 @@ class SearchULikeCNN(nn.Module):
             up_block = nn.ModuleList()
             for j in range(depth - i):
                 _, _, head_curr, _ = num_filters[i - 1][j]
-                _, _, head_prev, _ = num_filters[i - 1][j + 1]
-                # head_prev_prev = self._multiplier * sum([num_filters[i-1][j][2]])  # up_cell._multiplier
-                head_prev_prev = self._multiplier * sum([num_filters[k][j][2] for k in range(i)])  # up_cell._multiplier
-                head_prev = self._multiplier * head_prev  # up_cell._multiplier
-                filters = [head_prev_prev, head_prev, head_curr, 'up']
-                up_cell = Cell(meta_node_num, head_prev_prev, head_prev, head_curr, cell_type='up')
+                _, _, head_down, _ = num_filters[i - 1][j + 1]
+                # head_in0 = self._multiplier * sum([num_filters[i-1][j][2]])  # up_cell._multiplier
+                head_in0 = self._multiplier * sum([num_filters[k][j][2] for k in range(i)])  # up_cell._multiplier
+                head_in1 = self._multiplier * head_down  # up_cell._multiplier
+                filters = [head_in0, head_in1, head_curr, 'up']
+                up_cell = Cell(meta_node_num, head_in0, head_in1, head_curr, cell_type='up')
                 up_f.append(filters)
                 up_block += [up_cell]
             num_filters.append(up_f)
@@ -75,8 +69,6 @@ class SearchULikeCNN(nn.Module):
             self.softmax = nn.LogSoftmax(dim=1)
 
     def forward(self, x, weights_down_norm, weights_up_norm, weights_down, weights_up, betas_down, betas_up):
-
-        _, _, h, w = x.size()
         cell_out = []
         final_out = []
         for i, block in enumerate(self.blocks):
@@ -84,7 +76,7 @@ class SearchULikeCNN(nn.Module):
                 if i == 0 and j == 0:
                     ot = cell(x)
                 elif i == 0 and j == 1:
-                    ot = cell(x)
+                    ot = cell(self.stem1(x), cell_out[j - 1], weights_down_norm, weights_down, betas_down)
                 elif i == 0:
                     ot = cell(cell_out[j - 2], cell_out[j - 1], weights_down_norm, weights_down, betas_down)
                 else:
@@ -97,9 +89,6 @@ class SearchULikeCNN(nn.Module):
                         final_out.append(ot)
                 cell_out.append(ot)
 
-        # if self._use_softmax_head:
-        #     output = self.softmax(output)
-
         final_out.append(self.conv_segmentation(cell_out[-1]))
         return final_out
 
@@ -107,7 +96,8 @@ class SearchULikeCNN(nn.Module):
 class NasUnetSearch(nn.Module):
 
     def __init__(self, input_c, c, num_classes, depth, meta_node_num=4,
-                 use_sharing=True, double_down_channel=True, use_softmax_head=False, supervision=False, multi_gpus=False, device='cuda'):
+                 use_sharing=True, double_down_channel=True, use_softmax_head=False, supervision=False,
+                 multi_gpus=False, device='cuda'):
         super(NasUnetSearch, self).__init__()
         self._use_sharing = use_sharing
         self._meta_node_num = meta_node_num

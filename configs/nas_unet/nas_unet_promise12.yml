@@ -8,11 +8,11 @@ data:
     img_rows: 'same'
     img_cols: 'same'
 searching:
-    init_channels: 64
+    init_channels: 32
     depth: 5
     epoch: 500
 #    batch_size: 16
-    batch_size: 4
+    batch_size: 6
 #    batch_size: 1
     report_freq: 20
     n_workers: 2
@@ -41,12 +41,12 @@ searching:
     resume:
 training:
     geno_type: NASUNET
-    init_channels: 64
+    init_channels: 32
     depth: 5
     epoch: 3600
 #    batch_size: 26
-#    batch_size: 16
-    batch_size: 4
+    batch_size: 16
+#    batch_size: 3
 #    batch_size: 1
     report_freq: 10
     n_workers: 2
