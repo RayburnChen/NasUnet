@@ -8,15 +8,15 @@ from torch.nn.functional import interpolate
 class BuildCell(nn.Module):
     """Build a cell from genotype"""
 
-    def __init__(self, genotype, c_in0, c_in1, c, cell_type, dropout_prob=0):
+    def __init__(self, genotype, c_prev_prev, c_prev, c, cell_type, dropout_prob=0):
         super(BuildCell, self).__init__()
 
         if cell_type == 'down':
             # Note: the s0 size is twice than s1!
-            self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, ops_order='act_weight_norm')
+            self.preprocess0 = ConvOps(c_prev_prev, c, kernel_size=1, stride=2, ops_order='act_weight_norm')
         else:
-            self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, ops_order='act_weight_norm')
-        self.preprocess1 = ConvOps(c_in1, c, kernel_size=1, ops_order='act_weight_norm')
+            self.preprocess0 = ConvOps(c_prev_prev, c, kernel_size=1, ops_order='act_weight_norm')
+        self.preprocess1 = ConvOps(c_prev, c, kernel_size=1, ops_order='act_weight_norm')
 
         if cell_type == 'up':
             op_names, idx = zip(*genotype.up)
@@ -71,81 +71,82 @@ class NasUnet(BaseNet):
     """Construct a network"""
 
     def __init__(self, nclass, in_channels, backbone=None, aux=False,
-                 c=48, depth=5, dropout_prob=0,
-                 supervision=False, genotype=None, double_down_channel=False):
+                 c=48, depth=5, dropout_prob=0, supervision=False,
+                 genotype=None, double_down_channel=False):
 
         super(NasUnet, self).__init__(nclass, aux, backbone, norm_layer=nn.GroupNorm)
         self._depth = depth
         self._double_down_channel = double_down_channel
-        self._supervision = supervision
-        self._multiplier = len(genotype.down_concat)
+        stem_multiplier = 6
+        c_curr = stem_multiplier * c
+
+        c_prev_prev, c_prev, c_curr = c_curr, c_curr, c
+
+        # the stem need a complicate mode
+        self.stem0 = ConvOps(in_channels, c_prev_prev, kernel_size=1, ops_order='weight_norm')
+        self.stem1 = ConvOps(in_channels, c_prev, kernel_size=3, stride=2, ops_order='weight_norm')
 
         assert depth >= 2, 'depth must >= 2'
-        double_down = 2 if self._double_down_channel else 1
-        # 192, 192, 64
-        c_in0, c_in1, c_curr = self._multiplier * c, self._multiplier * c, c
 
-        self.blocks = nn.ModuleList()
-        self.stem0 = ConvOps(in_channels, c_in0, kernel_size=1, ops_order='weight_norm')
-        self.stem1 = ConvOps(in_channels, c_in1, kernel_size=3, stride=2, use_transpose=True, ops_order='weight_norm')
+        self.down_cells = nn.ModuleList()
+        self.up_cells = nn.ModuleList()
+        down_cs_nfilters = []
 
-        num_filters = []
-        down_f = []
-        down_block = nn.ModuleList()
+        # create the encoder pathway and add to a list
+        down_cs_nfilters += [c_prev]
+        down_cs_nfilters += [c_prev_prev]
         for i in range(depth):
-            if i == 0:
-                filters = [in_channels, in_channels, c_curr, 'stem0']
-                down_cell = self.stem0
-            else:
-                c_curr = int(double_down * c_curr)
-                filters = [c_in0, c_in1, c_curr, 'down']
-                down_cell = BuildCell(genotype, c_in0, c_in1, c_curr, cell_type='down', dropout_prob=dropout_prob)
-            down_f.append(filters)
-            down_block += [down_cell]
-            c_in0, c_in1 = c_in1, self._multiplier * c_curr  # down_cell._multiplier
+            c_curr = int(2 * c_curr) if self._double_down_channel else c_curr  # double the number of filters
+            down_cell = BuildCell(genotype, c_prev_prev, c_prev, c_curr, cell_type='down', dropout_prob=dropout_prob)
+            self.down_cells += [down_cell]
+            c_prev_prev, c_prev = c_prev, down_cell._multiplier * c_curr
+            down_cs_nfilters += [c_prev]
 
-        num_filters.append(down_f)
-        self.blocks += [down_block]
+        # create the decoder pathway and add to a list
+        for i in range(depth + 1):
+            c_prev_prev = down_cs_nfilters[-(i + 2)]  # the horizontal prev_prev input channel
+            up_cell = BuildCell(genotype, c_prev_prev, c_prev, c_curr, cell_type='up', dropout_prob=dropout_prob)
+            self.up_cells += [up_cell]
+            c_prev = up_cell._multiplier * c_curr
+            c_curr = int(c_curr // 2) if self._double_down_channel else c_curr  # halve the number of filters
 
-        for i in range(1, depth):
-            up_f = []
-            up_block = nn.ModuleList()
-            c_curr = int(c_curr / double_down)
-            c_in0, c_in1 = self._multiplier * num_filters[0][-i-1][2], self._multiplier * num_filters[-1][-1][2]
-            filters = [c_in0, c_in1, c_curr, 'up']
-            up_cell = BuildCell(genotype, c_in0, c_in1, c_curr, cell_type='up', dropout_prob=dropout_prob)
-            up_f.append(filters)
-            up_block += [up_cell]
-            num_filters.append(up_f)
-            self.blocks += [up_block]
+        self.nas_unet_head = ConvOps(c_prev, nclass, kernel_size=1, ops_order='weight')
 
-        last_filters = self._multiplier * num_filters[-1][-1][2]
-        self.nas_unet_head = ConvOps(last_filters, nclass, kernel_size=1, ops_order='weight')
+        if self.aux:
+            self.auxlayer = FCNHead(c_prev, nclass, nn.BatchNorm2d)
 
     def forward(self, x):
-        cell_out = []
-        final_out = []
-        for i, block in enumerate(self.blocks):
-            for j, cell in enumerate(block):
-                if i == 0 and j == 0:
-                    ot = cell(x)
-                elif i == 0 and j == 1:
-                    ot = cell(self.stem1(x), cell_out[j - 1])
-                elif i == 0:
-                    ot = cell(cell_out[j - 2], cell_out[j - 1])
-                else:
-                    in0 = cell_out[self._depth-1-i]
-                    in1 = cell_out[-1]
-                    ot = cell(in0, in1)
-                    if j == 0 and self._supervision:
-                        final_out.append(self.nas_unet_head(ot))
-                cell_out.append(ot)
+        _, _, h, w = x.size()
+        s0, s1 = self.stem0(x), self.stem1(x)
+        down_cs = []
 
-        if not self._supervision:
-            final_out.append(self.nas_unet_head(cell_out[-1]))
+        # encoder pathway
+        down_cs.append(s0)
+        down_cs.append(s1)
+        for i, cell in enumerate(self.down_cells):
+            # Sharing a global N*M weights matrix
+            # where M : normal + down
+            s0, s1 = s1, cell(s0, s1)
+            down_cs.append(s1)
 
-        del cell_out
-        return final_out
+        # decoder pathway
+        for i, cell in enumerate(self.up_cells):
+            # Sharing a global N*M weights matrix
+            # where M : normal + up
+            s0 = down_cs[-(i + 2)]  # horizon input
+            s1 = cell(s0, s1)
+
+        output = self.nas_unet_head(s1)
+
+        outputs = []
+        outputs.append(output)
+
+        if self.aux:  # use aux header
+            auxout = self.auxlayer(s1)
+            auxout = interpolate(auxout, (h, w), **self._up_kwargs)
+            outputs.append(auxout)
+
+        return outputs
 
 
 def get_nas_unet(dataset='pascal_voc', **kwargs):
