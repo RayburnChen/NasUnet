@@ -42,11 +42,11 @@ searching:
 training:
     geno_type: NASUNET
     init_channels: 32
-    depth: 6
+    depth: 5
     epoch: 3600
 #    batch_size: 26
-#    batch_size: 16
-    batch_size: 3
+    batch_size: 30
+#    batch_size: 3
 #    batch_size: 1
     report_freq: 10
     n_workers: 2
