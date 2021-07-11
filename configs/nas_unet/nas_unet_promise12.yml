@@ -22,7 +22,7 @@ searching:
     multi_gpus: True
     sharing_normal: False
     double_down_channel: False
-    deep_supervision: True
+    deep_supervision: False
     meta_node_num: 3
     grad_clip: 5
     train_portion: 0.5
@@ -42,7 +42,7 @@ searching:
 training:
     geno_type: NASUNET
     init_channels: 32
-    depth: 5
+    depth: 4
     epoch: 3600
 #    batch_size: 26
 #    batch_size: 16
@@ -52,7 +52,7 @@ training:
     n_workers: 2
     multi_gpus: False
     double_down_channel: False
-    deep_supervision: True
+    deep_supervision: False
     grad_clip: 3
     max_patience: 100
     model_optimizer:
