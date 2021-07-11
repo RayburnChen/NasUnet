@@ -9,7 +9,7 @@ data:
     img_cols: 'same'
 searching:
     init_channels: 32
-    depth: 5
+    depth: 4
     epoch: 500
 #    batch_size: 16
     batch_size: 3

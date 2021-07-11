@@ -22,23 +22,19 @@ class SearchULikeCNN(nn.Module):
         assert depth >= 2, 'depth must >= 2'
         double_down = 2 if self._double_down_channel else 1
         # 192, 192, 64
-        c_in0, c_in1, c_curr = self._multiplier * c, self._multiplier * c, c
+        c_in0, c_in1, c_curr = 2 * self._multiplier * c, 2 * self._multiplier * c, c
 
         self.blocks = nn.ModuleList()
         self.stem0 = ConvOps(in_channels, c_in0, kernel_size=1, ops_order='weight_norm')
-        self.stem1 = ConvOps(in_channels, c_in1, kernel_size=3, stride=2, use_transpose=True, ops_order='weight_norm')
+        self.stem1 = ConvOps(in_channels, c_in1, kernel_size=3, stride=2, ops_order='weight_norm')
 
         num_filters = []
         down_f = []
         down_block = nn.ModuleList()
         for i in range(depth):
-            if i == 0:
-                filters = [in_channels, in_channels, c_curr, 'stem0']
-                down_cell = self.stem0
-            else:
-                c_curr = int(double_down * c_curr)
-                filters = [c_in0, c_in1, c_curr, 'down']
-                down_cell = Cell(meta_node_num, c_in0, c_in1, c_curr, cell_type='down')
+            c_curr = int(double_down * c_curr)
+            filters = [c_in0, c_in1, c_curr, 'down']
+            down_cell = Cell(meta_node_num, c_in0, c_in1, c_curr, cell_type='down')
             down_f.append(filters)
             down_block += [down_cell]
             c_in0, c_in1 = c_in1, self._multiplier * c_curr  # down_cell._multiplier
@@ -62,6 +58,8 @@ class SearchULikeCNN(nn.Module):
             num_filters.append(up_f)
             self.blocks += [up_block]
 
+        self.tail0 = Cell(meta_node_num, 192, 96, 32, cell_type='up')
+        self.tail1 = Cell(meta_node_num, 192, 96, 32, cell_type='up')
         last_filters = self._multiplier * num_filters[-1][-1][2]
         self.conv_segmentation = ConvOps(last_filters, num_classes, kernel_size=1, ops_order='weight')
 
@@ -69,16 +67,18 @@ class SearchULikeCNN(nn.Module):
             self.softmax = nn.LogSoftmax(dim=1)
 
     def forward(self, x, weights_down_norm, weights_up_norm, weights_down, weights_up, betas_down, betas_up):
+        s0 = self.stem0(x)
+        s1 = self.stem1(x)
         cell_out = []
         final_out = []
         for i, block in enumerate(self.blocks):
             for j, cell in enumerate(block):
                 if i == 0 and j == 0:
-                    ot = cell(x)
+                    ot = cell(s0, s1, weights_down_norm, weights_down, betas_down)
                 elif i == 0 and j == 1:
-                    ot = cell(self.stem1(x), cell_out[j - 1], weights_down_norm, weights_down, betas_down)
+                    ot = cell(s1, cell_out[-1], weights_down_norm, weights_down, betas_down)
                 elif i == 0:
-                    ot = cell(cell_out[j - 2], cell_out[j - 1], weights_down_norm, weights_down, betas_down)
+                    ot = cell(cell_out[-2], cell_out[-1], weights_down_norm, weights_down, betas_down)
                 else:
                     # ides = [sum(range(self._depth, self._depth - i+1)) + j]
                     ides = [sum(range(self._depth, self._depth - k)) + j for k in range(i)]
@@ -89,6 +89,8 @@ class SearchULikeCNN(nn.Module):
                         final_out.append(self.conv_segmentation(ot))
                 cell_out.append(ot)
 
+        cell_out.append(self.tail0(s1, cell_out[-1], weights_up_norm, weights_up, betas_up))
+        cell_out.append(self.tail1(s0, cell_out[-1], weights_up_norm, weights_up, betas_up))
         if not self._supervision:
             final_out.append(self.conv_segmentation(cell_out[-1]))
 
