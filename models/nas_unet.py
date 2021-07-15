@@ -67,6 +67,18 @@ class BuildCell(nn.Module):
         return torch.cat([states[i] for i in self._concat], dim=1)
 
 
+class Head(nn.Module):
+
+    def __init__(self, c_s0, c_s1, c_last, c_curr, nclass, genotype, multiplier, dropout=0):
+        super(Head, self).__init__()
+        self.tail1 = BuildCell(genotype, c_s1, c_last, c_curr, cell_type='up', dropout_prob=dropout)
+        self.tail0 = BuildCell(genotype, c_s0, multiplier * c_curr, c_curr, cell_type='up', dropout_prob=dropout)
+        self.head = ConvOps(multiplier * c_curr, nclass, kernel_size=1, ops_order='weight')
+
+    def forward(self, s0, s1, ot):
+        return self.head(self.tail0(s0, self.tail1(s1, ot)))
+
+
 class NasUnet(BaseNet):
     """Construct a network"""
 
@@ -83,7 +95,8 @@ class NasUnet(BaseNet):
         assert depth >= 2, 'depth must >= 2'
         double_down = 2 if self._double_down_channel else 1
         # 192, 192, 64
-        c_in0, c_in1, c_curr = 2 * self._multiplier * c, 2 * self._multiplier * c, c
+        c_s0, c_s1 = 2 * self._multiplier * c, 2 * self._multiplier * c
+        c_in0, c_in1, c_curr = c_s0, c_s1, c
 
         self.blocks = nn.ModuleList()
         self.stem0 = ConvOps(in_channels, c_in0, kernel_size=1, ops_order='weight_norm')
@@ -119,10 +132,10 @@ class NasUnet(BaseNet):
             num_filters.append(up_f)
             self.blocks += [up_block]
 
-        self.tail0 = BuildCell(genotype, 192, 96, 32, cell_type='up', dropout_prob=dropout_prob)
-        self.tail1 = BuildCell(genotype, 192, 96, 32, cell_type='up', dropout_prob=dropout_prob)
-        last_filters = self._multiplier * num_filters[-1][-1][2]
-        self.nas_unet_head = ConvOps(last_filters, nclass, kernel_size=1, ops_order='weight')
+        self.head_block = nn.ModuleList()
+        for i in range(0, depth if self._supervision else 1):
+            c_last = self._multiplier * num_filters[i][0][2]
+            self.head_block += [Head(c_s0, c_s1, c_last, c, nclass, genotype, self._multiplier, dropout_prob)]
 
     def forward(self, x):
         s0 = self.stem0(x)
@@ -144,13 +157,11 @@ class NasUnet(BaseNet):
                     in1 = cell_out[ides[-1] + 1]
                     ot = cell(in0, in1)
                     if j == 0 and self._supervision:
-                        final_out.append(self.nas_unet_head(ot))
+                        final_out.append(self.head_block[i - 1](s0, s1, ot))
                 cell_out.append(ot)
 
-        cell_out.append(self.tail0(s1, cell_out[-1]))
-        cell_out.append(self.tail1(s0, cell_out[-1]))
         if not self._supervision:
-            final_out.append(self.nas_unet_head(cell_out[-1]))
+            final_out.append(self.head_block[-1](s0, s1, ot))
 
         del cell_out
         return final_out

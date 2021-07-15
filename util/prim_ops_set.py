@@ -45,7 +45,7 @@ class AbstractOp(nn.Module):
 class BaseOp(AbstractOp):
 
     def __init__(self, in_channels, out_channels, norm_type='gn', use_norm=True, affine=True,
-                 act_func='relu', dropout_rate=0, ops_order='weight_norm_act' ):
+                 act_func='relu', dropout_rate=0, ops_order='weight_norm_act'):
         super(BaseOp, self).__init__()
 
         self.in_channels = in_channels
