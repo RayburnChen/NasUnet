@@ -79,7 +79,7 @@ class SearchULikeCNN(nn.Module):
         if use_softmax_head:
             self.softmax = nn.LogSoftmax(dim=1)
 
-    def forward(self, x, weights_down_norm, weights_up_norm, weights_down, weights_up, betas_down, betas_up):
+    def forward(self, x, weights_down_norm, weights_up_norm, weights_mid_norm, weights_down, weights_up, weights_mid, betas_down, betas_up, betas_mid):
         s0 = self.stem0(x)
         s1 = self.stem1(x)
         cell_out = []
@@ -92,7 +92,7 @@ class SearchULikeCNN(nn.Module):
                     ot = cell(s1, cell_out[-1], weights_down_norm, weights_down, betas_down)
                 elif i == 0:
                     ot = cell(cell_out[-2], cell_out[-1], weights_down_norm, weights_down, betas_down)
-                else:
+                elif i+j+1 == self._depth:
                     # ides = [sum(range(self._depth, self._depth - i+1)) + j]
                     ides = [sum(range(self._depth, self._depth - k)) + j for k in range(i)]
                     in0 = torch.cat([cell_out[idx] for idx in ides], dim=1)
@@ -100,6 +100,14 @@ class SearchULikeCNN(nn.Module):
                     ot = cell(in0, in1, weights_up_norm, weights_up, betas_up)
                     if j == 0 and self._supervision:
                         final_out.append(self.head_block[i - 1](s0, s1, ot, weights_up_norm, weights_up, betas_up))
+                else:
+                    # ides = [sum(range(self._depth, self._depth - i+1)) + j]
+                    ides = [sum(range(self._depth, self._depth - k)) + j for k in range(i)]
+                    in0 = torch.cat([cell_out[idx] for idx in ides], dim=1)
+                    in1 = cell_out[ides[-1] + 1]
+                    ot = cell(in0, in1, weights_mid_norm, weights_mid, betas_mid)
+                    if j == 0 and self._supervision:
+                        final_out.append(self.head_block[i - 1](s0, s1, ot, weights_mid_norm, weights_mid, betas_mid))
                 cell_out.append(ot)
 
         if not self._supervision:
@@ -139,20 +147,26 @@ class NasUnetSearch(nn.Module):
         k = sum(1 for i in range(self._meta_node_num) for n in range(2 + i))  # total number of input node
         self.alphas_down = nn.Parameter(1e-3 * torch.randn(k, down_num_ops))
         self.alphas_up = nn.Parameter(1e-3 * torch.randn(k, up_num_ops))
+        self.alphas_mid = nn.Parameter(1e-3 * torch.randn(k, up_num_ops))
         self.alphas_normal_down = nn.Parameter(1e-3 * torch.randn(k, normal_num_ops))
         self.alphas_normal_up = self.alphas_normal_down if self._use_sharing else nn.Parameter(
             1e-3 * torch.randn(k, normal_num_ops))
+        self.alphas_normal_mid = nn.Parameter(1e-3 * torch.randn(k, normal_num_ops))
 
         self.betas_down = nn.Parameter(1e-3 * torch.randn(k))
         self.betas_up = nn.Parameter(1e-3 * torch.randn(k))
+        self.betas_mid = nn.Parameter(1e-3 * torch.randn(k))
 
         self._arch_parameters = [
             self.alphas_down,
             self.alphas_up,
+            self.alphas_mid,
             self.alphas_normal_down,
             self.alphas_normal_up,
+            self.alphas_normal_mid,
             self.betas_down,
-            self.betas_up
+            self.betas_up,
+            self.betas_mid
         ]
 
     def load_params(self, alphas_dict, betas_dict):
@@ -198,14 +212,19 @@ class NasUnetSearch(nn.Module):
         alphas_down = F.softmax(self.alphas_down, dim=-1).detach().cpu()
         alphas_normal_up = F.softmax(self.alphas_normal_up, dim=-1).detach().cpu()
         alphas_up = F.softmax(self.alphas_up, dim=-1).detach().cpu()
+        alphas_normal_mid = F.softmax(self.alphas_normal_mid, dim=-1).detach().cpu()
+        alphas_mid = F.softmax(self.alphas_mid, dim=-1).detach().cpu()
         betas_down = torch.empty(0)
         betas_up = torch.empty(0)
+        betas_mid = torch.empty(0)
         for i in range(self._meta_node_num):
             offset = len(betas_down)
             betas_down_edge = F.softmax(self.betas_down[offset:offset + 2 + i], dim=-1).detach().cpu()
             betas_up_edge = F.softmax(self.betas_up[offset:offset + 2 + i], dim=-1).detach().cpu()
+            betas_mid_edge = F.softmax(self.betas_mid[offset:offset + 2 + i], dim=-1).detach().cpu()
             betas_down = torch.cat([betas_down, betas_down_edge], dim=0)
             betas_up = torch.cat([betas_up, betas_up_edge], dim=0)
+            betas_mid = torch.cat([betas_mid, betas_mid_edge], dim=0)
 
         k = sum(1 for i in range(self._meta_node_num) for n in range(2 + i))  # total number of input node
         for j in range(k):
@@ -213,14 +232,18 @@ class NasUnetSearch(nn.Module):
             alphas_down[j, :] = alphas_down[j, :] * betas_down[j].item()
             alphas_normal_up[j, :] = alphas_normal_up[j, :] * betas_up[j].item()
             alphas_up[j, :] = alphas_up[j, :] * betas_up[j].item()
+            alphas_normal_mid[j, :] = alphas_normal_mid[j, :] * betas_mid[j].item()
+            alphas_mid[j, :] = alphas_mid[j, :] * betas_mid[j].item()
 
         geno_parser = GenoParser(self._meta_node_num)
         gene_down = geno_parser.parse(alphas_normal_down.numpy(), alphas_down.numpy(), cell_type='down')
         gene_up = geno_parser.parse(alphas_normal_up.numpy(), alphas_up.numpy(), cell_type='up')
+        gene_mid = geno_parser.parse(alphas_normal_mid.numpy(), alphas_mid.numpy(), cell_type='up')
         concat = range(2, self._meta_node_num + 2)
         geno_type = Genotype(
             down=gene_down, down_concat=concat,
-            up=gene_up, up_concat=concat
+            up=gene_up, up_concat=concat,
+            mid=gene_mid, mid_concat=concat,
         )
         return geno_type
 
@@ -228,36 +251,32 @@ class NasUnetSearch(nn.Module):
 
         weights_down_norm = F.softmax(self.alphas_normal_down, dim=-1)
         weights_up_norm = F.softmax(self.alphas_normal_up, dim=-1)
+        weights_mid_norm = F.softmax(self.alphas_normal_mid, dim=-1)
         weights_down = F.softmax(self.alphas_down, dim=-1)
         weights_up = F.softmax(self.alphas_up, dim=-1)
+        weights_mid = F.softmax(self.alphas_mid, dim=-1)
 
         if len(self.device_ids) == 1:
-            return self.net(x, weights_down_norm, weights_up_norm, weights_down, weights_up, self.betas_down,
-                            self.betas_up)
+            return self.net(x, weights_down_norm, weights_up_norm, weights_mid_norm, weights_down, weights_up, weights_mid, self.betas_down,
+                            self.betas_up, self.betas_mid)
 
         # scatter x
         xs = nn.parallel.scatter(x, self.device_ids)
         # broadcast weights
         wnormal_down_copies = broadcast_list(weights_down_norm, self.device_ids)
         wnormal_up_copies = broadcast_list(weights_up_norm, self.device_ids)
+        wnormal_mid_copies = broadcast_list(weights_mid_norm, self.device_ids)
         wdown_copies = broadcast_list(weights_down, self.device_ids)
         wup_copies = broadcast_list(weights_up, self.device_ids)
+        wmid_copies = broadcast_list(weights_mid, self.device_ids)
 
         # replicate modules
         replicas = nn.parallel.replicate(self.net, self.device_ids)
-        outputs = nn.parallel.parallel_apply(replicas, list(zip(xs, wnormal_down_copies, wnormal_up_copies,
-                                                                wdown_copies, wup_copies)),
+        outputs = nn.parallel.parallel_apply(replicas, list(zip(xs, wnormal_down_copies, wnormal_up_copies, wnormal_mid_copies,
+                                                                wdown_copies, wup_copies, wmid_copies)),
                                              devices=self.device_ids)
 
         return nn.parallel.gather(outputs, self.device_ids[0])
-
-    # def alphas(self):
-    #     for n, p in self._alphas:
-    #         yield p
-
-    # def named_alphas(self):
-    #     for n, p in self._alphas:
-    #         yield n, p
 
 
 class Architecture(object):

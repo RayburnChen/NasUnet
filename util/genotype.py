@@ -1,7 +1,7 @@
 from collections import namedtuple
 import numpy as np
 
-Genotype = namedtuple('Genotype', 'down down_concat up up_concat')
+Genotype = namedtuple('Genotype', 'down down_concat up up_concat mid mid_concat')
 
 CellLinkDownPos = [
     'avg_pool',

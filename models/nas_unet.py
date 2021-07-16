@@ -21,6 +21,9 @@ class BuildCell(nn.Module):
         if cell_type == 'up':
             op_names, idx = zip(*genotype.up)
             concat = genotype.up_concat
+        elif cell_type == 'mid':
+            op_names, idx = zip(*genotype.mid)
+            concat = genotype.mid_concat
         else:
             op_names, idx = zip(*genotype.down)
             concat = genotype.down_concat
@@ -126,7 +129,10 @@ class NasUnet(BaseNet):
                 head_in0 = self._multiplier * sum([num_filters[k][j][2] for k in range(i)])
                 head_in1 = self._multiplier * head_down
                 filters = [head_in0, head_in1, head_curr, 'up']
-                up_cell = BuildCell(genotype, head_in0, head_in1, head_curr, cell_type='up', dropout_prob=dropout_prob)
+                if i+j+1 == depth:
+                    up_cell = BuildCell(genotype, head_in0, head_in1, head_curr, cell_type='up', dropout_prob=dropout_prob)
+                else:
+                    up_cell = BuildCell(genotype, head_in0, head_in1, head_curr, cell_type='mid', dropout_prob=dropout_prob)
                 up_f.append(filters)
                 up_block += [up_cell]
             num_filters.append(up_f)
