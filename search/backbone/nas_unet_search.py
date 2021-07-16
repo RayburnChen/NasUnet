@@ -5,12 +5,24 @@ from util.genotype import *
 from search.backbone.cell import Cell
 
 
+class Head(nn.Module):
+
+    def __init__(self, c_s0, c_s1, c_last, c_curr, nclass, multiplier):
+        super(Head, self).__init__()
+        self.tail1 = Cell(multiplier, c_s1, c_last, c_curr, cell_type='up')
+        self.tail0 = Cell(multiplier, c_s0, multiplier * c_curr, c_curr, cell_type='up')
+        self.head = ConvOps(multiplier * c_curr, nclass, kernel_size=1, ops_order='weight')
+
+    def forward(self, s0, s1, ot, weights_up_norm, weights_up, betas_up):
+        return self.head(self.tail0(s0, self.tail1(s1, ot, weights_up_norm, weights_up, betas_up), weights_up_norm, weights_up, betas_up))
+
+
 class SearchULikeCNN(nn.Module):
 
-    def __init__(self, input_c, c, num_classes, depth, meta_node_num=3,
+    def __init__(self, input_c, c, nclass, depth, meta_node_num=3,
                  double_down_channel=True, use_softmax_head=False, supervision=False):
         super(SearchULikeCNN, self).__init__()
-        self._num_classes = num_classes  # 2
+        self._num_classes = nclass  # 2
         self._depth = depth  # 4
         self._meta_node_num = meta_node_num  # 3
         self._multiplier = meta_node_num  # 3
@@ -22,7 +34,8 @@ class SearchULikeCNN(nn.Module):
         assert depth >= 2, 'depth must >= 2'
         double_down = 2 if self._double_down_channel else 1
         # 192, 192, 64
-        c_in0, c_in1, c_curr = 2 * self._multiplier * c, 2 * self._multiplier * c, c
+        c_s0, c_s1 = 2 * self._multiplier * c, 2 * self._multiplier * c
+        c_in0, c_in1, c_curr = c_s0, c_s1, c
 
         self.blocks = nn.ModuleList()
         self.stem0 = ConvOps(in_channels, c_in0, kernel_size=1, ops_order='weight_norm')
@@ -58,10 +71,10 @@ class SearchULikeCNN(nn.Module):
             num_filters.append(up_f)
             self.blocks += [up_block]
 
-        self.tail0 = Cell(meta_node_num, 192, 96, 32, cell_type='up')
-        self.tail1 = Cell(meta_node_num, 192, 96, 32, cell_type='up')
-        last_filters = self._multiplier * num_filters[-1][-1][2]
-        self.conv_segmentation = ConvOps(last_filters, num_classes, kernel_size=1, ops_order='weight')
+        self.head_block = nn.ModuleList()
+        for i in range(0, depth if self._supervision else 1):
+            c_last = self._multiplier * num_filters[i][0][2]
+            self.head_block += [Head(c_s0, c_s1, c_last, c, nclass, self._multiplier)]
 
         if use_softmax_head:
             self.softmax = nn.LogSoftmax(dim=1)
@@ -86,13 +99,11 @@ class SearchULikeCNN(nn.Module):
                     in1 = cell_out[ides[-1] + 1]
                     ot = cell(in0, in1, weights_up_norm, weights_up, betas_up)
                     if j == 0 and self._supervision:
-                        final_out.append(self.conv_segmentation(ot))
+                        final_out.append(self.head_block[i - 1](s0, s1, ot, weights_up_norm, weights_up, betas_up))
                 cell_out.append(ot)
 
-        cell_out.append(self.tail0(s1, cell_out[-1], weights_up_norm, weights_up, betas_up))
-        cell_out.append(self.tail1(s0, cell_out[-1], weights_up_norm, weights_up, betas_up))
         if not self._supervision:
-            final_out.append(self.conv_segmentation(cell_out[-1]))
+            final_out.append(self.head_block[-1](s0, s1, ot, weights_up_norm, weights_up, betas_up))
 
         del cell_out
         return final_out
