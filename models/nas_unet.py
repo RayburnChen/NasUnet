@@ -69,14 +69,25 @@ class BuildCell(nn.Module):
 
 class Head(nn.Module):
 
-    def __init__(self, c_s0, c_s1, c_last, c_curr, nclass, genotype, multiplier, dropout=0):
+    def __init__(self, c_s0, c_s1, c_last, c_curr, nclass, dropout=0):
         super(Head, self).__init__()
-        self.tail1 = BuildCell(genotype, c_s1, c_last, c_curr, cell_type='up', dropout_prob=dropout)
-        self.tail0 = BuildCell(genotype, c_s0, multiplier * c_curr, c_curr, cell_type='up', dropout_prob=dropout)
-        self.head = ConvOps(multiplier * c_curr, nclass, kernel_size=1, ops_order='weight')
+        # self.preprocess_s0 = ConvOps(c_s0, c_curr, kernel_size=1, ops_order='act_weight_norm')
+        # self.preprocess_s1 = ConvOps(c_s1, c_curr, kernel_size=1, ops_order='act_weight_norm')
+        self.preprocess_ot = ConvOps(c_last, c_curr, kernel_size=1, ops_order='act_weight_norm')
+        self.up_ot = ConvOps(c_curr, c_curr, stride=2, affine=True, use_transpose=True, dropout_rate=dropout)
+        # self.conv_s1 = ConvOps(2*c_curr, c_curr, affine=True, has_shuffle=True)
+        self.up_s1 = ConvOps(c_curr, c_curr, stride=2, affine=True, use_transpose=True, dropout_rate=dropout)
+        # self.conv_s0 = ConvOps(2*c_curr, c_curr, affine=True, has_shuffle=True)
+        self.head = ConvOps(c_curr, nclass, kernel_size=1, ops_order='weight')
 
     def forward(self, s0, s1, ot):
-        return self.head(self.tail0(s0, self.tail1(s1, ot)))
+        # in_s0 = self.preprocess_s0(s0)
+        # in_s1 = self.preprocess_s1(s1)
+        # in_ot = self.preprocess_ot(ot)
+        # ot_s1 = torch.cat([in_s1, self.up_ot(in_ot)], dim=1)
+        # ot_s0 = torch.cat([in_s0, self.up_s1(self.conv_s1(ot_s1))], dim=1)
+        # return self.head(self.conv_s0(ot_s0))
+        return self.head(self.up_s1(self.up_ot(self.preprocess_ot(ot))))
 
 
 class NasUnet(BaseNet):
@@ -135,7 +146,7 @@ class NasUnet(BaseNet):
         self.head_block = nn.ModuleList()
         for i in range(0, depth if self._supervision else 1):
             c_last = self._multiplier * num_filters[i][0][2]
-            self.head_block += [Head(c_s0, c_s1, c_last, c, nclass, genotype, self._multiplier, dropout_prob)]
+            self.head_block += [Head(c_s0, c_s1, c_last, c, nclass, dropout_prob)]
 
     def forward(self, x):
         s0 = self.stem0(x)
