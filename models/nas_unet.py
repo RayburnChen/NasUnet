@@ -74,8 +74,8 @@ class Head(nn.Module):
 
     def __init__(self, c_s0, c_s1, c_last, c_curr, nclass, genotype, multiplier, dropout=0):
         super(Head, self).__init__()
-        self.tail1 = BuildCell(genotype, c_s1, c_last, c_curr, cell_type='up', dropout_prob=dropout)
-        self.tail0 = BuildCell(genotype, c_s0, multiplier * c_curr, c_curr, cell_type='up', dropout_prob=dropout)
+        self.tail1 = BuildCell(genotype, c_s1, c_last, c_curr, cell_type='mid', dropout_prob=dropout)
+        self.tail0 = BuildCell(genotype, c_s0, multiplier * c_curr, c_curr, cell_type='mid', dropout_prob=dropout)
         self.head = ConvOps(multiplier * c_curr, nclass, kernel_size=1, ops_order='weight')
 
     def forward(self, s0, s1, ot):

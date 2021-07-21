@@ -111,7 +111,7 @@ class SearchULikeCNN(nn.Module):
                 cell_out.append(ot)
 
         if not self._supervision:
-            final_out.append(self.head_block[-1](s0, s1, ot, weights_up_norm, weights_up, betas_up))
+            final_out.append(self.head_block[-1](s0, s1, ot, weights_mid_norm, weights_mid, betas_mid))
 
         del cell_out
         return final_out
@@ -172,17 +172,23 @@ class NasUnetSearch(nn.Module):
     def load_params(self, alphas_dict, betas_dict):
         self.alphas_down = alphas_dict['alphas_down']
         self.alphas_up = alphas_dict['alphas_up']
+        self.alphas_mid = alphas_dict['alphas_mid']
         self.alphas_normal_down = alphas_dict['alphas_normal_down']
         self.alphas_normal_up = alphas_dict['alphas_normal_up']
+        self.alphas_normal_mid = alphas_dict['alphas_normal_mid']
         self.betas_down = betas_dict['betas_down']
         self.betas_up = betas_dict['betas_up']
+        self.betas_mid = betas_dict['betas_mid']
         self._arch_parameters = [
             self.alphas_down,
             self.alphas_up,
+            self.alphas_mid,
             self.alphas_normal_down,
             self.alphas_normal_up,
+            self.alphas_normal_mid,
             self.betas_down,
-            self.betas_up
+            self.betas_up,
+            self.betas_mid
         ]
 
     def alphas_dict(self):
@@ -191,12 +197,15 @@ class NasUnetSearch(nn.Module):
             'alphas_normal_down': self.alphas_normal_down,
             'alphas_up': self.alphas_up,
             'alphas_normal_up': self.alphas_normal_up,
+            'alphas_mid': self.alphas_mid,
+            'alphas_normal_mid': self.alphas_normal_mid,
         }
 
     def betas_dict(self):
         return {
             'betas_down': self.betas_down,
-            'betas_up': self.betas_up
+            'betas_up': self.betas_up,
+            'betas_mid': self.betas_mid
         }
 
     def arch_parameters(self):
