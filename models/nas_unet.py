@@ -151,8 +151,8 @@ class NasUnet(BaseNet):
                 elif i == 0:
                     ot = cell(cell_out[-2], cell_out[-1])
                 else:
-                    # ides = [sum(range(self._depth, self._depth - i+1)) + j]
-                    ides = [sum(range(self._depth, self._depth - k)) + j for k in range(i)]
+                    # ides = [sum(range(self._depth, self._depth - i+1, -1)) + j]
+                    ides = [sum(range(self._depth, self._depth - k, -1)) + j for k in range(i)]
                     in0 = torch.cat([cell_out[idx] for idx in ides], dim=1)
                     in1 = cell_out[ides[-1] + 1]
                     ot = cell(in0, in1)
