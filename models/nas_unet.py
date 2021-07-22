@@ -69,14 +69,12 @@ class BuildCell(nn.Module):
 
 class Head(nn.Module):
 
-    def __init__(self, c_s0, c_s1, c_last, c_curr, nclass, genotype, multiplier, dropout=0):
+    def __init__(self, c_last, nclass):
         super(Head, self).__init__()
-        self.tail1 = BuildCell(genotype, c_s1, c_last, c_curr, cell_type='up', dropout_prob=dropout)
-        self.tail0 = BuildCell(genotype, c_s0, multiplier * c_curr, c_curr, cell_type='up', dropout_prob=dropout)
-        self.head = ConvOps(multiplier * c_curr, nclass, kernel_size=1, ops_order='weight')
+        self.head = ConvOps(c_last, nclass, kernel_size=1, ops_order='weight')
 
-    def forward(self, s0, s1, ot):
-        return self.head(self.tail0(s0, self.tail1(s1, ot)))
+    def forward(self, ot):
+        return self.head(ot)
 
 
 class NasUnet(BaseNet):
@@ -106,12 +104,23 @@ class NasUnet(BaseNet):
         down_f = []
         down_block = nn.ModuleList()
         for i in range(depth):
-            c_curr = int(double_down * c_curr)
-            filters = [c_in0, c_in1, c_curr, 'down']
-            down_cell = BuildCell(genotype, c_in0, c_in1, c_curr, cell_type='down', dropout_prob=dropout_prob)
-            down_f.append(filters)
-            down_block += [down_cell]
-            c_in0, c_in1 = c_in1, self._multiplier * c_curr  # down_cell._multiplier
+            if i == 0:
+                filters = [1, 1, int(c_in0/self._multiplier), 'stem0']
+                down_cell = self.stem0
+                down_f.append(filters)
+                down_block += [down_cell]
+            elif i == 1:
+                filters = [1, 1, int(c_in1/self._multiplier), 'stem1']
+                down_cell = self.stem1
+                down_f.append(filters)
+                down_block += [down_cell]
+            else:
+                c_curr = int(double_down * c_curr)
+                filters = [c_in0, c_in1, c_curr, 'down']
+                down_cell = BuildCell(genotype, c_in0, c_in1, c_curr, cell_type='down', dropout_prob=dropout_prob)
+                down_f.append(filters)
+                down_block += [down_cell]
+                c_in0, c_in1 = c_in1, self._multiplier * c_curr  # down_cell._multiplier
 
         num_filters.append(down_f)
         self.blocks += [down_block]
@@ -133,21 +142,19 @@ class NasUnet(BaseNet):
             self.blocks += [up_block]
 
         self.head_block = nn.ModuleList()
-        for i in range(0, depth if self._supervision else 1):
+        for i in range(1, depth if self._supervision else 2):
             c_last = self._multiplier * num_filters[i][0][2]
-            self.head_block += [Head(c_s0, c_s1, c_last, c, nclass, genotype, self._multiplier, dropout_prob)]
+            self.head_block += [Head(c_last, nclass)]
 
     def forward(self, x):
-        s0 = self.stem0(x)
-        s1 = self.stem1(x)
         cell_out = []
         final_out = []
         for i, block in enumerate(self.blocks):
             for j, cell in enumerate(block):
                 if i == 0 and j == 0:
-                    ot = cell(s0, s1)
+                    ot = cell(x)
                 elif i == 0 and j == 1:
-                    ot = cell(s1, cell_out[-1])
+                    ot = cell(x)
                 elif i == 0:
                     ot = cell(cell_out[-2], cell_out[-1])
                 else:
@@ -157,11 +164,11 @@ class NasUnet(BaseNet):
                     in1 = cell_out[ides[-1] + 1]
                     ot = cell(in0, in1)
                     if j == 0 and self._supervision:
-                        final_out.append(self.head_block[i - 1](s0, s1, ot))
+                        final_out.append(self.head_block[i - 1](ot))
                 cell_out.append(ot)
 
         if not self._supervision:
-            final_out.append(self.head_block[-1](s0, s1, ot))
+            final_out.append(self.head_block[-1](ot))
 
         del cell_out
         return final_out

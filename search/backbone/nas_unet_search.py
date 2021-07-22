@@ -7,14 +7,12 @@ from search.backbone.cell import Cell
 
 class Head(nn.Module):
 
-    def __init__(self, c_s0, c_s1, c_last, c_curr, nclass, multiplier):
+    def __init__(self, c_last, nclass):
         super(Head, self).__init__()
-        self.tail1 = Cell(multiplier, c_s1, c_last, c_curr, cell_type='up')
-        self.tail0 = Cell(multiplier, c_s0, multiplier * c_curr, c_curr, cell_type='up')
-        self.head = ConvOps(multiplier * c_curr, nclass, kernel_size=1, ops_order='weight')
+        self.head = ConvOps(c_last, nclass, kernel_size=1, ops_order='weight')
 
-    def forward(self, s0, s1, ot, weights_up_norm, weights_up, betas_up):
-        return self.head(self.tail0(s0, self.tail1(s1, ot, weights_up_norm, weights_up, betas_up), weights_up_norm, weights_up, betas_up))
+    def forward(self, ot):
+        return self.head(ot)
 
 
 class SearchULikeCNN(nn.Module):
@@ -45,12 +43,23 @@ class SearchULikeCNN(nn.Module):
         down_f = []
         down_block = nn.ModuleList()
         for i in range(depth):
-            c_curr = int(double_down * c_curr)
-            filters = [c_in0, c_in1, c_curr, 'down']
-            down_cell = Cell(meta_node_num, c_in0, c_in1, c_curr, cell_type='down')
-            down_f.append(filters)
-            down_block += [down_cell]
-            c_in0, c_in1 = c_in1, self._multiplier * c_curr  # down_cell._multiplier
+            if i == 0:
+                filters = [1, 1, int(c_in0/self._multiplier), 'stem0']
+                down_cell = self.stem0
+                down_f.append(filters)
+                down_block += [down_cell]
+            elif i == 1:
+                filters = [1, 1, int(c_in1/self._multiplier), 'stem1']
+                down_cell = self.stem1
+                down_f.append(filters)
+                down_block += [down_cell]
+            else:
+                c_curr = int(double_down * c_curr)
+                filters = [c_in0, c_in1, c_curr, 'down']
+                down_cell = Cell(meta_node_num, c_in0, c_in1, c_curr, cell_type='down')
+                down_f.append(filters)
+                down_block += [down_cell]
+                c_in0, c_in1 = c_in1, self._multiplier * c_curr  # down_cell._multiplier
 
         num_filters.append(down_f)
         self.blocks += [down_block]
@@ -74,22 +83,20 @@ class SearchULikeCNN(nn.Module):
         self.head_block = nn.ModuleList()
         for i in range(0, depth if self._supervision else 1):
             c_last = self._multiplier * num_filters[i][0][2]
-            self.head_block += [Head(c_s0, c_s1, c_last, c, nclass, self._multiplier)]
+            self.head_block += [Head(c_last, nclass)]
 
         if use_softmax_head:
             self.softmax = nn.LogSoftmax(dim=1)
 
     def forward(self, x, weights_down_norm, weights_up_norm, weights_down, weights_up, betas_down, betas_up):
-        s0 = self.stem0(x)
-        s1 = self.stem1(x)
         cell_out = []
         final_out = []
         for i, block in enumerate(self.blocks):
             for j, cell in enumerate(block):
                 if i == 0 and j == 0:
-                    ot = cell(s0, s1, weights_down_norm, weights_down, betas_down)
+                    ot = cell(x)
                 elif i == 0 and j == 1:
-                    ot = cell(s1, cell_out[-1], weights_down_norm, weights_down, betas_down)
+                    ot = cell(x)
                 elif i == 0:
                     ot = cell(cell_out[-2], cell_out[-1], weights_down_norm, weights_down, betas_down)
                 else:
@@ -99,11 +106,11 @@ class SearchULikeCNN(nn.Module):
                     in1 = cell_out[ides[-1] + 1]
                     ot = cell(in0, in1, weights_up_norm, weights_up, betas_up)
                     if j == 0 and self._supervision:
-                        final_out.append(self.head_block[i - 1](s0, s1, ot, weights_up_norm, weights_up, betas_up))
+                        final_out.append(self.head_block[i - 1](ot))
                 cell_out.append(ot)
 
         if not self._supervision:
-            final_out.append(self.head_block[-1](s0, s1, ot, weights_up_norm, weights_up, betas_up))
+            final_out.append(self.head_block[-1](ot))
 
         del cell_out
         return final_out
