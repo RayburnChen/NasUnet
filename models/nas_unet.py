@@ -133,8 +133,12 @@ class NasUnet(BaseNet):
             self.blocks += [up_block]
 
         self.head_block = nn.ModuleList()
-        for i in range(0, depth if self._supervision else 1):
-            c_last = self._multiplier * num_filters[i][0][2]
+        if self._supervision:
+            for i in range(1, depth):
+                c_last = self._multiplier * num_filters[i][0][2]
+                self.head_block += [Head(c_s0, c_s1, c_last, c, nclass, genotype, self._multiplier, dropout_prob)]
+        else:
+            c_last = self._multiplier * num_filters[-1][0][2]
             self.head_block += [Head(c_s0, c_s1, c_last, c, nclass, genotype, self._multiplier, dropout_prob)]
 
     def forward(self, x):
