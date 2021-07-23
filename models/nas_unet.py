@@ -128,22 +128,25 @@ class NasUnet(BaseNet):
         for i in range(1, depth):
             up_f = []
             up_block = nn.ModuleList()
-            for j in range(depth - i):
-                _, _, head_curr, _ = num_filters[i - 1][j]
-                _, _, head_down, _ = num_filters[i - 1][j + 1]
-                # head_in0 = self._multiplier * sum([num_filters[i-1][j][2]])  # up_cell._multiplier
-                head_in0 = self._multiplier * sum([num_filters[k][j][2] for k in range(i)])
-                head_in1 = self._multiplier * head_down
-                filters = [head_in0, head_in1, head_curr, 'up']
-                up_cell = BuildCell(genotype, head_in0, head_in1, head_curr, cell_type='up', dropout_prob=dropout_prob)
-                up_f.append(filters)
-                up_block += [up_cell]
+            _, _, head_curr, _ = num_filters[0][depth - i - 1]
+            _, _, head_down, _ = num_filters[i - 1][-1]
+            # head_in0 = self._multiplier * sum([num_filters[i-1][j][2]])  # up_cell._multiplier
+            head_in0 = self._multiplier * head_curr
+            head_in1 = self._multiplier * head_down
+            filters = [head_in0, head_in1, head_curr, 'up']
+            up_cell = BuildCell(genotype, head_in0, head_in1, head_curr, cell_type='up', dropout_prob=dropout_prob)
+            up_f.append(filters)
+            up_block += [up_cell]
             num_filters.append(up_f)
             self.blocks += [up_block]
 
         self.head_block = nn.ModuleList()
-        for i in range(1, depth if self._supervision else 2):
-            c_last = self._multiplier * num_filters[i][0][2]
+        if self._supervision:
+            for i in range(1, depth):
+                c_last = self._multiplier * num_filters[i][0][2]
+                self.head_block += [Head(c_last, nclass)]
+        else:
+            c_last = self._multiplier * num_filters[-1][0][2]
             self.head_block += [Head(c_last, nclass)]
 
     def forward(self, x):
@@ -158,10 +161,8 @@ class NasUnet(BaseNet):
                 elif i == 0:
                     ot = cell(cell_out[-2], cell_out[-1])
                 else:
-                    # ides = [sum(range(self._depth, self._depth - i+1, -1)) + j]
-                    ides = [sum(range(self._depth, self._depth - k, -1)) + j for k in range(i)]
-                    in0 = torch.cat([cell_out[idx] for idx in ides], dim=1)
-                    in1 = cell_out[ides[-1] + 1]
+                    in0 = cell_out[self._depth - i - 1]
+                    in1 = cell_out[-1]
                     ot = cell(in0, in1)
                     if j == 0 and self._supervision:
                         final_out.append(self.head_block[i - 1](ot))
