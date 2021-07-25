@@ -92,7 +92,7 @@ class SearchULikeCNN(nn.Module):
         if use_softmax_head:
             self.softmax = nn.LogSoftmax(dim=1)
 
-    def forward(self, x, weights_down_norm, weights_up_norm, weights_down, weights_up, betas_down, betas_up):
+    def forward(self, x, weights_down_norm, weights_up_norm, weights_down, weights_up, betas_down, betas_up, gamma):
         cell_out = []
         final_out = []
         for i, block in enumerate(self.blocks):
@@ -156,13 +156,16 @@ class NasUnetSearch(nn.Module):
         self.betas_down = nn.Parameter(1e-3 * torch.randn(k))
         self.betas_up = nn.Parameter(1e-3 * torch.randn(k))
 
+        self.gamma = nn.Parameter(1e-3 * torch.randn(self._depth - 1))
+
         self._arch_parameters = [
             self.alphas_down,
             self.alphas_up,
             self.alphas_normal_down,
             self.alphas_normal_up,
             self.betas_down,
-            self.betas_up
+            self.betas_up,
+            self.gamma
         ]
 
     def load_params(self, alphas_dict, betas_dict):
@@ -230,7 +233,8 @@ class NasUnetSearch(nn.Module):
         concat = range(2, self._meta_node_num + 2)
         geno_type = Genotype(
             down=gene_down, down_concat=concat,
-            up=gene_up, up_concat=concat
+            up=gene_up, up_concat=concat,
+            gamma=F.softmax(self.gamma, dim=-1)
         )
         return geno_type
 
@@ -243,7 +247,7 @@ class NasUnetSearch(nn.Module):
 
         if len(self.device_ids) == 1:
             return self.net(x, weights_down_norm, weights_up_norm, weights_down, weights_up, self.betas_down,
-                            self.betas_up)
+                            self.betas_up, self.gamma)
 
         # scatter x
         xs = nn.parallel.scatter(x, self.device_ids)
