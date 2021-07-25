@@ -112,11 +112,11 @@ class SearchULikeCNN(nn.Module):
                         final_out.append(self.head_block[i - 1](ot))
                 cell_out.append(ot)
 
-        if not self._supervision:
-            final_out.append(self.head_block[-1](ot))
-
         del cell_out
-        return final_out
+        if not self._supervision:
+            return [self.head_block[-1](ot)]
+        else:
+            return [sum(g * ot for g, ot in zip(gamma, final_out))]
 
 
 class NasUnetSearch(nn.Module):
@@ -138,9 +138,9 @@ class NasUnetSearch(nn.Module):
             self.device_ids = [0]
 
         # Initialize architecture parameters: alpha
-        self._init_alphas()
+        self._init_alphas(depth)
 
-    def _init_alphas(self):
+    def _init_alphas(self, depth):
 
         normal_num_ops = len(CellPos)
         down_num_ops = len(CellLinkDownPos)
@@ -156,7 +156,7 @@ class NasUnetSearch(nn.Module):
         self.betas_down = nn.Parameter(1e-3 * torch.randn(k))
         self.betas_up = nn.Parameter(1e-3 * torch.randn(k))
 
-        self.gamma = nn.Parameter(1e-3 * torch.randn(self._depth - 1))
+        self.gamma = nn.Parameter(1e-3 * torch.randn(depth - 1))
 
         self._arch_parameters = [
             self.alphas_down,
@@ -231,10 +231,11 @@ class NasUnetSearch(nn.Module):
         gene_down = geno_parser.parse(alphas_normal_down.numpy(), alphas_down.numpy(), cell_type='down')
         gene_up = geno_parser.parse(alphas_normal_up.numpy(), alphas_up.numpy(), cell_type='up')
         concat = range(2, self._meta_node_num + 2)
+        gamma = F.softmax(self.gamma, dim=-1).detach().cpu().tolist()
         geno_type = Genotype(
             down=gene_down, down_concat=concat,
             up=gene_up, up_concat=concat,
-            gamma=F.softmax(self.gamma, dim=-1)
+            gamma=gamma
         )
         return geno_type
 
@@ -245,9 +246,11 @@ class NasUnetSearch(nn.Module):
         weights_down = F.softmax(self.alphas_down, dim=-1)
         weights_up = F.softmax(self.alphas_up, dim=-1)
 
+        gamma = F.softmax(self.gamma, dim=-1)
+
         if len(self.device_ids) == 1:
             return self.net(x, weights_down_norm, weights_up_norm, weights_down, weights_up, self.betas_down,
-                            self.betas_up, self.gamma)
+                            self.betas_up, gamma)
 
         # scatter x
         xs = nn.parallel.scatter(x, self.device_ids)

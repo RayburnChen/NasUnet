@@ -89,6 +89,7 @@ class NasUnet(BaseNet):
         self._double_down_channel = double_down_channel
         self._supervision = supervision
         self._multiplier = len(genotype.down_concat)
+        self.gamma = genotype.gamma
 
         assert depth >= 2, 'depth must >= 2'
         double_down = 2 if self._double_down_channel else 1
@@ -170,11 +171,11 @@ class NasUnet(BaseNet):
                         final_out.append(self.head_block[i - 1](ot))
                 cell_out.append(ot)
 
-        if not self._supervision:
-            final_out.append(self.head_block[-1](ot))
-
         del cell_out
-        return final_out
+        if not self._supervision:
+            return [self.head_block[-1](ot)]
+        else:
+            return [sum(g * ot for g, ot in zip(self.gamma, final_out))]
 
 
 def get_nas_unet(dataset='pascal_voc', **kwargs):
