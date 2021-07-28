@@ -72,3 +72,4 @@ python ./train.py --config ../configs/nas_unet/nas_unet_promise12.yml --model na
 
 nvidia-smi
 # deviceQuery
+
