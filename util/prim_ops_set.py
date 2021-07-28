@@ -10,19 +10,25 @@ OPS = {
     'shuffle_conv': lambda c, stride, affine, dp: ConvOps(c, c, affine=affine),
     'conv': lambda c, stride, affine, dp: ConvOps(c, c, affine=affine, has_shuffle=True),
     'avg_pool': lambda c, stride, affine, dp: PoolingOp(c, c, affine=affine, pool_type='avg'),
-    'max_pool': lambda c, stride, affine, dp: PoolingOp(c, c, affine=affine,pool_type='max'),
+    'max_pool': lambda c, stride, affine, dp: PoolingOp(c, c, affine=affine, pool_type='max'),
 
     'down_cweight': lambda c, stride, affine, dp: CWeightOp(c, c, stride=2, affine=affine, dropout_rate=dp),
-    'down_dep_conv': lambda c, stride, affine, dp: ConvOps(c, c, stride=2, affine=affine, use_depthwise=True, dropout_rate=dp),
+    'down_dep_conv': lambda c, stride, affine, dp: ConvOps(c, c, stride=2, affine=affine, use_depthwise=True,
+                                                           dropout_rate=dp),
     'down_conv': lambda c, stride, affine, dp: ConvOps(c, c, stride=2, affine=affine, dropout_rate=dp),
     'down_dil_conv': lambda c, stride, affine, dp: ConvOps(c, c, stride=2, affine=affine, dilation=2, dropout_rate=dp),
 
-    'up_cweight': lambda c, stride, affine, dp: CWeightOp(c, c, stride=2, affine=affine,use_transpose=True, dropout_rate=dp),
-    'up_dep_conv': lambda c, stride, affine, dp: ConvOps(c, c, stride=2, affine=affine,use_depthwise=True, use_transpose=True, dropout_rate=dp),
-    'up_conv': lambda c, stride, affine, dp: ConvOps(c, c, stride=2, affine=affine, use_transpose=True, dropout_rate=dp),
-    'up_dil_conv': lambda c, stride, affine, dp: ConvOps(c, c, stride=2, affine=affine, dilation=3, use_transpose=True,  dropout_rate=dp),
+    'up_cweight': lambda c, stride, affine, dp: CWeightOp(c, c, stride=2, affine=affine, use_transpose=True,
+                                                          dropout_rate=dp, output_padding=1),
+    'up_dep_conv': lambda c, stride, affine, dp: ConvOps(c, c, stride=2, affine=affine, use_depthwise=True,
+                                                         use_transpose=True, dropout_rate=dp, output_padding=1),
+    'up_conv': lambda c, stride, affine, dp: ConvOps(c, c, stride=2, affine=affine, use_transpose=True, dropout_rate=dp,
+                                                     output_padding=1),
+    'up_dil_conv': lambda c, stride, affine, dp: ConvOps(c, c, stride=2, affine=affine, dilation=3, use_transpose=True,
+                                                         dropout_rate=dp, output_padding=1),
 
 }
+
 
 class AbstractOp(nn.Module):
 
@@ -115,7 +121,7 @@ class BaseOp(AbstractOp):
 
     @property
     def config(self):
-        return{
+        return {
             'in_channels': self.in_channels,
             'out_channels': self.out_channels,
             'use_norm': self.use_norm,
@@ -158,10 +164,12 @@ class BaseOp(AbstractOp):
 
 class ConvOps(BaseOp):
 
-    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1,dilation=1,groups=1,
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, dilation=1, groups=1,
                  bias=False, has_shuffle=False, use_transpose=False, output_padding=0, use_depthwise=False,
-                 norm_type='gn', use_norm=True, affine=True, act_func='relu', dropout_rate=0, ops_order='weight_norm_act'):
-        super(ConvOps, self).__init__(in_channels, out_channels, norm_type, use_norm, affine, act_func, dropout_rate, ops_order)
+                 norm_type='gn', use_norm=True, affine=True, act_func='relu', dropout_rate=0,
+                 ops_order='weight_norm_act'):
+        super(ConvOps, self).__init__(in_channels, out_channels, norm_type, use_norm, affine, act_func, dropout_rate,
+                                      ops_order)
 
         self.kernel_size = kernel_size
         self.stride = stride
@@ -180,35 +188,30 @@ class ConvOps(BaseOp):
             padding[0] *= self.dilation
             padding[1] *= self.dilation
 
-        if use_transpose and self.dilation > 1:
-            if isinstance(padding, int):
-                padding = padding+1
-            else:
-                padding[0] = padding[0]+1
-                padding[1] = padding[1]+1
-
         # 'kernel_size', 'stride', 'padding', 'dilation' can either be 'int' or 'tuple' of int
         if use_transpose:
-            if use_depthwise: # 1. transpose depth-wise conv
-                self.depth_conv = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=self.kernel_size+1,
-                        stride=self.stride, padding=padding, output_padding=self.output_padding, groups=in_channels, bias=self.bias)
-                self.point_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1,
-                                            groups=self.groups, bias=False)
-            else: # 2. transpose conv
-                self.conv = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=self.kernel_size+1,
-                            stride=self.stride, padding=padding,
-                            output_padding=self.output_padding, dilation=self.dilation, bias=self.bias)
+            if use_depthwise:  # 1. transpose depth-wise conv
+                self.depth_conv = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=self.kernel_size,
+                                                     stride=self.stride, padding=padding,
+                                                     output_padding=self.output_padding, groups=in_channels,
+                                                     bias=self.bias)  # output_padding 1
+                self.point_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1, groups=self.groups, bias=False)
+            else:  # 2. transpose conv
+                self.conv = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=self.kernel_size,
+                                               stride=self.stride, padding=padding,
+                                               output_padding=self.output_padding, dilation=self.dilation,
+                                               bias=self.bias)  # padding 3 output_padding 1
         else:
-            if use_depthwise: # 3. depth-wise conv
+            if use_depthwise:  # 3. depth-wise conv
                 self.depth_conv = nn.Conv2d(in_channels, in_channels, kernel_size=self.kernel_size,
-                        stride=self.stride, padding=padding,
-                        dilation=self.dilation, groups=in_channels, bias=False)
+                                            stride=self.stride, padding=padding,
+                                            dilation=self.dilation, groups=in_channels, bias=False)
                 self.point_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1,
                                             groups=self.groups, bias=False)
-            else: # 4. conv
+            else:  # 4. conv
                 self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=self.kernel_size,
-                            stride=self.stride, padding=padding,
-                            dilation=self.dilation, bias=False)
+                                      stride=self.stride, padding=padding,
+                                      dilation=self.dilation, bias=False)
 
     @property
     def unit_str(self):
@@ -254,12 +257,14 @@ class ConvOps(BaseOp):
             x = shuffle_layer(x, self.groups)
         return x
 
+
 class CWeightOp(BaseOp):
 
-    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1,dilation=1, groups=None,
-                 bias=False, has_shuffle=False, use_transpose=False,output_padding=0, norm_type='gn',
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, dilation=1, groups=None,
+                 bias=False, has_shuffle=False, use_transpose=False, output_padding=0, norm_type='gn',
                  use_norm=False, affine=True, act_func=None, dropout_rate=0, ops_order='weight'):
-        super(CWeightOp, self).__init__(in_channels, out_channels, norm_type, use_norm, affine, act_func, dropout_rate, ops_order)
+        super(CWeightOp, self).__init__(in_channels, out_channels, norm_type, use_norm, affine, act_func, dropout_rate,
+                                        ops_order)
 
         self.kernel_size = kernel_size
         self.stride = stride
@@ -287,14 +292,16 @@ class CWeightOp(BaseOp):
         )
         if stride >= 2:
             if use_transpose:
-                self.conv = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=self.kernel_size+1,
+                self.conv = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=self.kernel_size,
                                                stride=self.stride, padding=padding, output_padding=self.output_padding,
-                                                bias=False)
+                                               # output_padding 1
+                                               bias=False)
             else:
                 self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size,
                                       stride=stride, padding=padding, bias=False)
             group = 1 if out_channels % 16 != 0 else out_channels // 16
             self.norm = nn.GroupNorm(group, out_channels, affine=affine)
+
     @property
     def unit_str(self):
         if isinstance(self.kernel_size, int):
@@ -313,7 +320,7 @@ class CWeightOp(BaseOp):
         b, c, _, _ = x.size()
         y = self.avg_pool(x).view(b, c)
         y = self.fc(y).view(b, c, 1, 1)
-        rst = self.norm(self.conv(x*y)) if self.stride >= 2 else x*y
+        rst = self.norm(self.conv(x * y)) if self.stride >= 2 else x * y
         return rst
 
 
@@ -321,7 +328,8 @@ class PoolingOp(BaseOp):
 
     def __init__(self, in_channels, out_channels, pool_type, kernel_size=2, stride=2,
                  norm_type='gn', use_norm=False, affine=True, act_func=None, dropout_rate=0, ops_order='weight'):
-        super(PoolingOp, self).__init__(in_channels, out_channels, norm_type, use_norm, affine, act_func, dropout_rate, ops_order)
+        super(PoolingOp, self).__init__(in_channels, out_channels, norm_type, use_norm, affine, act_func, dropout_rate,
+                                        ops_order)
 
         self.pool_type = pool_type
         self.kernel_size = kernel_size
@@ -368,12 +376,13 @@ class PoolingOp(BaseOp):
     def weight_call(self, x):
         return self.pool(x)
 
+
 class IdentityOp(BaseOp):
 
     def __init__(self, in_channels, out_channels, norm_type='gn', use_norm=False, affine=True,
                  act_func=None, dropout_rate=0, ops_order='weight_norm_act'):
-        super(IdentityOp, self).__init__(in_channels, out_channels, norm_type,use_norm, affine,
-                                          act_func, dropout_rate, ops_order)
+        super(IdentityOp, self).__init__(in_channels, out_channels, norm_type, use_norm, affine,
+                                         act_func, dropout_rate, ops_order)
 
     @property
     def unit_str(self):
@@ -396,6 +405,7 @@ class IdentityOp(BaseOp):
 
     def weight_call(self, x):
         return x
+
 
 class ZeroOp(BaseOp):
     def __init__(self, in_channels, out_channels, stride):
@@ -431,14 +441,3 @@ class ZeroOp(BaseOp):
             padding = torch.zeros(n, c, h, w)
         padding = torch.autograd.Variable(padding, requires_grad=False)
         return padding
-
-
-
-
-
-
-
-
-
-
-
