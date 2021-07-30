@@ -32,7 +32,7 @@ class SearchULikeCNN(nn.Module):
         assert depth >= 2, 'depth must >= 2'
         double_down = 2 if self._double_down_channel else 1
         # 192, 192, 64
-        c_s0, c_s1 = 2 * self._multiplier * c, 2 * self._multiplier * c
+        c_s0, c_s1 = self._multiplier * c, self._multiplier * c
         c_in0, c_in1, c_curr = c_s0, c_s1, c
 
         self.blocks = nn.ModuleList()
@@ -110,7 +110,7 @@ class SearchULikeCNN(nn.Module):
                     in1 = cell_out[ides[-1] + 1]
                     ot = cell(in0, in1, weights_up_norm, weights_up, betas_up)
                     if j == 0 and self._supervision:
-                        final_out.append(self.head_block[i - 1](ot))
+                        final_out.append(self.head_block[i-1](ot))
                 cell_out.append(ot)
 
         if not self._supervision:
