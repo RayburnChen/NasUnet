@@ -93,7 +93,7 @@ class NasUnet(BaseNet):
         assert depth >= 2, 'depth must >= 2'
         double_down = 2 if self._double_down_channel else 1
         # 192, 192, 64
-        c_s0, c_s1 = 2 * self._multiplier * c, 2 * self._multiplier * c
+        c_s0, c_s1 = self._multiplier * c, self._multiplier * c
         c_in0, c_in1, c_curr = c_s0, c_s1, c
 
         self.blocks = nn.ModuleList()
@@ -142,13 +142,13 @@ class NasUnet(BaseNet):
             self.blocks += [up_block]
 
         self.head_block = nn.ModuleList()
-        if self._supervision:
-            for i in range(1, depth):
-                c_last = self._multiplier * num_filters[i][0][2]
-                self.head_block += [Head(c_last, nclass)]
-        else:
-            c_last = self._multiplier * num_filters[-1][0][2]
-            self.head_block += [Head(c_last, nclass)]
+        # if self._supervision:
+        #     for i in range(1, depth):
+        #         c_last = self._multiplier * num_filters[i][0][2]
+        #         self.head_block += [Head(c_last, nclass)]
+        # else:
+        c_last = self._multiplier * num_filters[-1][0][2]
+        self.head_block += [Head(c_last, nclass)]
 
     def forward(self, x):
         cell_out = []
@@ -168,7 +168,7 @@ class NasUnet(BaseNet):
                     in1 = cell_out[ides[-1] + 1]
                     ot = cell(in0, in1)
                     if j == 0 and self._supervision:
-                        final_out.append(self.head_block[i - 1](ot))
+                        final_out.append(self.head_block[-1](ot))
                 cell_out.append(ot)
 
         if not self._supervision:
