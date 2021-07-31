@@ -241,17 +241,9 @@ class NasUnetSearch(nn.Module):
         weights_up_norm = F.softmax(self.alphas_normal_up, dim=-1)
         weights_down = F.softmax(self.alphas_down, dim=-1)
         weights_up = F.softmax(self.alphas_up, dim=-1)
-        betas_down = torch.empty(0)
-        betas_up = torch.empty(0)
-        for i in range(self._meta_node_num):
-            offset = len(betas_down)
-            betas_down_edge = F.softmax(self.betas_down[offset:offset + 2 + i], dim=-1).detach().cpu()
-            betas_up_edge = F.softmax(self.betas_up[offset:offset + 2 + i], dim=-1).detach().cpu()
-            betas_down = torch.cat([betas_down, betas_down_edge], dim=0)
-            betas_up = torch.cat([betas_up, betas_up_edge], dim=0)
 
         if len(self.device_ids) == 1:
-            return self.net(x, weights_down_norm, weights_up_norm, weights_down, weights_up, betas_down, betas_up)
+            return self.net(x, weights_down_norm, weights_up_norm, weights_down, weights_up, self.betas_down, self.betas_up)
 
         # scatter x
         xs = nn.parallel.scatter(x, self.device_ids)
