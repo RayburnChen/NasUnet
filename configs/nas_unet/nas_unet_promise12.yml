@@ -8,8 +8,8 @@ data:
     img_rows: 'same'
     img_cols: 'same'
 searching:
-    init_channels: 32
-    depth: 4
+    init_channels: 16
+    depth: 5
     epoch: 1000
 #    batch_size: 16
     batch_size: 6
