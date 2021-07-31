@@ -47,8 +47,8 @@ training:
     epoch: 3600
 #    batch_size: 26
 #    batch_size: 16
-    batch_size: 10
-#    batch_size: 3
+    batch_size: 8
+#    batch_size: 1
     report_freq: 10
     n_workers: 2
     multi_gpus: False
