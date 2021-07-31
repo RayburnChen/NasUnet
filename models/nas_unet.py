@@ -89,7 +89,7 @@ class NasUnet(BaseNet):
         self._double_down_channel = double_down_channel
         self._supervision = supervision
         self._multiplier = len(genotype.down_concat)
-        self.gamma = genotype.gamma
+        self.gamma = F.softmax(genotype.gamma, dim=-1)
 
         assert depth >= 2, 'depth must >= 2'
         double_down = 2 if self._double_down_channel else 1

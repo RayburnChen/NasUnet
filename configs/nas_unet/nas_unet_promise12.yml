@@ -12,8 +12,8 @@ searching:
     depth: 5
     epoch: 1000
 #    batch_size: 16
-    batch_size: 6
-#    batch_size: 1
+    batch_size: 10
+#    batch_size: 3
     report_freq: 20
     n_workers: 2
     alpha_begin: 15
@@ -47,8 +47,8 @@ training:
     epoch: 3600
 #    batch_size: 26
 #    batch_size: 16
-    batch_size: 5
-#    batch_size: 1
+    batch_size: 10
+#    batch_size: 3
     report_freq: 10
     n_workers: 2
     multi_gpus: False

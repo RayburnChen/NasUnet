@@ -242,24 +242,23 @@ class NasUnetSearch(nn.Module):
 
     def forward(self, x):
 
-        weights_down_norm = F.softmax(self.alphas_normal_down, dim=-1)
-        weights_up_norm = F.softmax(self.alphas_normal_up, dim=-1)
-        weights_down = F.softmax(self.alphas_down, dim=-1)
-        weights_up = F.softmax(self.alphas_up, dim=-1)
-
+        alphas_down_norm = F.softmax(self.alphas_normal_down, dim=-1)
+        alphas_up_norm = F.softmax(self.alphas_normal_up, dim=-1)
+        alphas_down = F.softmax(self.alphas_down, dim=-1)
+        alphas_up = F.softmax(self.alphas_up, dim=-1)
         gamma = F.softmax(self.gamma, dim=-1)
 
         if len(self.device_ids) == 1:
-            return self.net(x, weights_down_norm, weights_up_norm, weights_down, weights_up, self.betas_down,
+            return self.net(x, alphas_down_norm, alphas_up_norm, alphas_down, alphas_up, self.betas_down,
                             self.betas_up, gamma)
 
         # scatter x
         xs = nn.parallel.scatter(x, self.device_ids)
         # broadcast weights
-        wnormal_down_copies = broadcast_list(weights_down_norm, self.device_ids)
-        wnormal_up_copies = broadcast_list(weights_up_norm, self.device_ids)
-        wdown_copies = broadcast_list(weights_down, self.device_ids)
-        wup_copies = broadcast_list(weights_up, self.device_ids)
+        wnormal_down_copies = broadcast_list(alphas_down_norm, self.device_ids)
+        wnormal_up_copies = broadcast_list(alphas_up_norm, self.device_ids)
+        wdown_copies = broadcast_list(alphas_down, self.device_ids)
+        wup_copies = broadcast_list(alphas_up, self.device_ids)
 
         # replicate modules
         replicas = nn.parallel.replicate(self.net, self.device_ids)
@@ -268,14 +267,6 @@ class NasUnetSearch(nn.Module):
                                              devices=self.device_ids)
 
         return nn.parallel.gather(outputs, self.device_ids[0])
-
-    # def alphas(self):
-    #     for n, p in self._alphas:
-    #         yield p
-
-    # def named_alphas(self):
-    #     for n, p in self._alphas:
-    #         yield n, p
 
 
 class Architecture(object):
