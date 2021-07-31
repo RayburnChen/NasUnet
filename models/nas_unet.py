@@ -54,6 +54,14 @@ class BuildCell(nn.Module):
             h1 = op1(h1)
             h2 = op2(h2)
 
+            # the size of h1 and h2 may be different, so we need interpolate
+            # if h1.size() != h2.size() :
+            #     _, _, height1, width1 = h1.size()
+            #     _, _, height2, width2 = h2.size()
+            #     if height1 > height2 or width1 > width2:
+            #         h2 = interpolate(h2, (height1, width1))
+            #     else:
+            #         h1 = interpolate(h1, (height2, width2))
             s = h1 + h2
             states += [s]
         return torch.cat([states[i] for i in self._concat], dim=1)
@@ -134,13 +142,13 @@ class NasUnet(BaseNet):
             self.blocks += [up_block]
 
         self.head_block = nn.ModuleList()
-        if self._supervision:
-            for i in range(1, depth):
-                c_last = self._multiplier * num_filters[i][0][2]
-                self.head_block += [Head(c_last, nclass)]
-        else:
-            c_last = self._multiplier * num_filters[-1][0][2]
-            self.head_block += [Head(c_last, nclass)]
+        # if self._supervision:
+        #     for i in range(1, depth):
+        #         c_last = self._multiplier * num_filters[i][0][2]
+        #         self.head_block += [Head(c_last, nclass)]
+        # else:
+        c_last = self._multiplier * num_filters[-1][0][2]
+        self.head_block += [Head(c_last, nclass)]
 
     def forward(self, x):
         cell_out = []
@@ -160,7 +168,7 @@ class NasUnet(BaseNet):
                     in1 = cell_out[ides[-1] + 1]
                     ot = cell(in0, in1)
                     if j == 0 and self._supervision:
-                        final_out.append(self.head_block[i-1](ot))
+                        final_out.append(self.head_block[-1](ot))
                 cell_out.append(ot)
 
         if not self._supervision:
