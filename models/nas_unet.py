@@ -98,12 +98,12 @@ class NasUnet(BaseNet):
         down_block = nn.ModuleList()
         for i in range(depth):
             if i == 0:
-                filters = [1, 1, int(c_in0/self._multiplier), 'stem0']
+                filters = [1, 1, int(c_in0 / self._multiplier), 'stem0']
                 down_cell = self.stem0
                 down_f.append(filters)
                 down_block += [down_cell]
             elif i == 1:
-                filters = [1, 1, int(c_in1/self._multiplier), 'stem1']
+                filters = [1, 1, int(c_in1 / self._multiplier), 'stem1']
                 down_cell = self.stem1
                 down_f.append(filters)
                 down_block += [down_cell]
@@ -122,13 +122,17 @@ class NasUnet(BaseNet):
             up_f = []
             up_block = nn.ModuleList()
             for j in range(depth - i):
-                _, _, head_curr, _ = num_filters[i - 1][j]
-                _, _, head_down, _ = num_filters[i - 1][j + 1]
-                # head_in0 = self._multiplier * sum([num_filters[i-1][j][2]])  # up_cell._multiplier
-                head_in0 = self._multiplier * sum([num_filters[k][j][2] for k in range(i)])  # up_cell._multiplier
-                head_in1 = self._multiplier * head_down  # up_cell._multiplier
-                filters = [head_in0, head_in1, head_curr, 'up']
-                up_cell = BuildCell(genotype, head_in0, head_in1, head_curr, cell_type='up', dropout_prob=dropout_prob)
+                if self.gamma[i + j - 1] == 0:
+                    filters = [0, 0, 0, 'None']
+                    up_cell = None
+                else:
+                    _, _, head_curr, _ = num_filters[0][j]
+                    _, _, head_down, _ = num_filters[i - 1][j + 1]
+                    # head_in0 = self._multiplier * sum([num_filters[i-1][j][2]])  # up_cell._multiplier
+                    head_in0 = self._multiplier * sum([num_filters[k][j][2] for k in range(i)])  # up_cell._multiplier
+                    head_in1 = self._multiplier * head_down  # up_cell._multiplier
+                    filters = [head_in0, head_in1, head_curr, 'up']
+                    up_cell = BuildCell(genotype, head_in0, head_in1, head_curr, cell_type='up', dropout_prob=dropout_prob)
                 up_f.append(filters)
                 up_block += [up_cell]
             num_filters.append(up_f)
@@ -155,20 +159,24 @@ class NasUnet(BaseNet):
                 elif i == 0:
                     ot = cell(cell_out[-2], cell_out[-1])
                 else:
-                    # ides = [sum(range(self._depth, self._depth - i+1)) + j]
-                    ides = [sum(range(self._depth, self._depth - k, -1)) + j for k in range(i)]
-                    in0 = torch.cat([cell_out[idx] for idx in ides], dim=1)
-                    in1 = cell_out[ides[-1] + 1]
-                    ot = cell(in0, in1)
+                    if self.gamma[i + j - 1] == 0:
+                        ot = None
+                    else:
+                        # ides = [sum(range(self._depth, self._depth - i+1)) + j]
+                        ides = [sum(range(self._depth, self._depth - k, -1)) + j for k in range(i)]
+                        in0 = torch.cat([cell_out[idx] for idx in ides if cell_out[idx] is not None], dim=1)
+                        in1 = cell_out[ides[-1] + 1]
+                        ot = cell(in0, in1)
                     if j == 0 and self._supervision:
-                        final_out.append(self.head_block[-1](ot))
+                        final_out.append(None if ot is None else self.head_block[-1](ot))
                 cell_out.append(ot)
 
         del cell_out
         if not self._supervision:
             return [self.head_block[-1](ot)]
         else:
-            return [sum(g * ot for g, ot in zip(self.gamma, final_out))]
+            # return [sum(g * ot for g, ot in zip(self.gamma, final_out) if g != 0)]
+            return [ot for g, ot in zip(self.gamma, final_out) if g != 0]
 
 
 def get_nas_unet(dataset='pascal_voc', **kwargs):
