@@ -1,5 +1,4 @@
 from util.prim_ops_set import *
-from .fcn import FCNHead
 from .base import BaseNet
 from util.functional import *
 from torch.nn.functional import interpolate
