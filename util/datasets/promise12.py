@@ -348,6 +348,7 @@ class Promise12(BaseDataset):
     TRAIN_IMAGE_DIR = 'TrainingData'
     VAL_IMAGE_DIR = 'TestData'
     NUM_CLASS = 2
+    # CROP_SIZE = 384
     CROP_SIZE = 256
     CLASS_WEIGHTS = None
 
@@ -367,7 +368,7 @@ class Promise12(BaseDataset):
 
         # SECOND
         # store data in the npy file
-        data_path = os.path.join(root, 'npy_image')
+        data_path = os.path.join(root, 'npy_image_' + str(self.CROP_SIZE))
         if not os.path.exists(data_path):
             create_exp_dir(data_path, 'Create augmentation data at {}')
             data_to_array(root, data_path, self.CROP_SIZE, self.CROP_SIZE)

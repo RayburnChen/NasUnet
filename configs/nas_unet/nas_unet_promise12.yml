@@ -8,12 +8,12 @@ data:
     img_rows: 'same'
     img_cols: 'same'
 searching:
-    init_channels: 16
+    init_channels: 32
     depth: 5
     epoch: 1000
 #    batch_size: 16
-    batch_size: 10
-#    batch_size: 3
+    batch_size: 5
+#    batch_size: 1
     report_freq: 20
     n_workers: 2
     alpha_begin: 15
@@ -30,11 +30,14 @@ searching:
         name: 'sgd'
         lr: 0.025
         weight_decay: 3.0e-4
+        momentum: 0.9
     arch_optimizer:
         name: 'adam'
 #        lr: 3.0e-4
         lr: 1.0e-4
-        weight_decay: 5.0e-3
+#        weight_decay: 5.0e-3
+        weight_decay: 1.0e-3
+        betas: !!python/tuple [0.5, 0.999]
     loss:
 #        name: 'dice_sq_ce'
         name: 'dice_ce'
@@ -57,9 +60,13 @@ training:
     grad_clip: 3
     max_patience: 100
     model_optimizer:
-        name: 'adam'
+        name: 'sgd'
         lr: 1.0e-3
-        weight_decay: 5.0e-4
+        weight_decay: 3.0e-4
+        momentum: 0.9
+#        name: 'adam'
+#        lr: 1.0e-3
+#        weight_decay: 5.0e-4
     loss:
 #        name: 'dice_sq_ce'
         name: 'dice_ce'
