@@ -44,12 +44,12 @@ class SearchULikeCNN(nn.Module):
         down_block = nn.ModuleList()
         for i in range(depth):
             if i == 0:
-                filters = [1, 1, int(c_in0/self._multiplier), 'stem0']
+                filters = [1, 1, int(c_in0 / self._multiplier), 'stem0']
                 down_cell = self.stem0
                 down_f.append(filters)
                 down_block += [down_cell]
             elif i == 1:
-                filters = [1, 1, int(c_in1/self._multiplier), 'stem1']
+                filters = [1, 1, int(c_in1 / self._multiplier), 'stem1']
                 down_cell = self.stem1
                 down_f.append(filters)
                 down_block += [down_cell]
@@ -104,20 +104,29 @@ class SearchULikeCNN(nn.Module):
                 elif i == 0:
                     ot = cell(cell_out[-2], cell_out[-1], weights_down_norm, weights_down, betas_down)
                 else:
-                    # ides = [sum(range(self._depth, self._depth - i+1)) + j]
                     ides = [sum(range(self._depth, self._depth - k, -1)) + j for k in range(i)]
-                    in0 = torch.cat([cell_out[idx] for idx in ides], dim=1)
+                    # in0 = torch.cat([cell_out[idx] for idx in ides], dim=1)
+                    gamma_used = gamma[j:i + j, :]
+                    assert len(ides) == len(gamma_used), 'gamma size not match'
+                    # in0 = torch.cat(
+                    #     [cell_out[ides[0]] * gam[0] + cell_out[idx] * gam[1] for idx, gam in zip(ides, gamma_used)],
+                    #     dim=1)
+                    in0 = torch.cat(
+                        [cell_out[ides[i - 1 if i > 0 else 0]] * gamma_used[i][0] + cell_out[idx] * gamma_used[i][1] for
+                         i, idx in enumerate(ides)], dim=1)
                     in1 = cell_out[ides[-1] + 1]
                     ot = cell(in0, in1, weights_up_norm, weights_up, betas_up)
+                    # if i + j < self._depth - 1:
+                    #     ot = gamma[i + j][0] * cell_out[ides[-1]] + gamma[i + j][1] * ot
                     if j == 0 and self._supervision:
                         final_out.append(self.head_block[-1](ot))
                 cell_out.append(ot)
 
         del cell_out
-        if not self._supervision:
-            return [self.head_block[-1](ot)]
+        if self._supervision:
+            return final_out
         else:
-            return [sum(g * ot for g, ot in zip(gamma, final_out))]
+            return [self.head_block[-1](ot)]
 
 
 class NasUnetSearch(nn.Module):
@@ -157,7 +166,7 @@ class NasUnetSearch(nn.Module):
         self.betas_down = nn.Parameter(1e-3 * torch.randn(k))
         self.betas_up = nn.Parameter(1e-3 * torch.randn(k))
 
-        self.gamma = nn.Parameter(1e-3 * torch.randn(depth - 1))
+        self.gamma = nn.Parameter(1e-3 * torch.randn(depth - 1, 2))
 
         self._arch_parameters = [
             self.alphas_down,
@@ -212,14 +221,14 @@ class NasUnetSearch(nn.Module):
         alphas_down = F.softmax(self.alphas_down, dim=-1).detach().cpu()
         alphas_normal_up = F.softmax(self.alphas_normal_up, dim=-1).detach().cpu()
         alphas_up = F.softmax(self.alphas_up, dim=-1).detach().cpu()
-        betas_down = torch.empty(0)
-        betas_up = torch.empty(0)
+        betas_down = []
+        betas_up = []
         for i in range(self._meta_node_num):
             offset = len(betas_down)
-            betas_down_edge = F.softmax(self.betas_down[offset:offset + 2 + i], dim=-1).detach().cpu()
-            betas_up_edge = F.softmax(self.betas_up[offset:offset + 2 + i], dim=-1).detach().cpu()
-            betas_down = torch.cat([betas_down, betas_down_edge], dim=0)
-            betas_up = torch.cat([betas_up, betas_up_edge], dim=0)
+            betas_down.append(F.softmax(self.betas_down[offset:offset + 2 + i], dim=-1).detach().cpu())
+            betas_up.append(F.softmax(self.betas_up[offset:offset + 2 + i], dim=-1).detach().cpu())
+        betas_down = torch.cat(betas_down, dim=0)
+        betas_up = torch.cat(betas_up, dim=0)
 
         k = sum(1 for i in range(self._meta_node_num) for n in range(2 + i))  # total number of input node
         for j in range(k):
@@ -232,7 +241,8 @@ class NasUnetSearch(nn.Module):
         gene_down = geno_parser.parse(alphas_normal_down.numpy(), alphas_down.numpy(), cell_type='down')
         gene_up = geno_parser.parse(alphas_normal_up.numpy(), alphas_up.numpy(), cell_type='up')
         concat = range(2, self._meta_node_num + 2)
-        gamma = F.softmax(self.gamma, dim=-1).detach().cpu().tolist()
+        gamma = F.softmax(self.gamma, dim=-1).detach().cpu().argmax(1).tolist()
+        gamma[0] = 1
         geno_type = Genotype(
             down=gene_down, down_concat=concat,
             up=gene_up, up_concat=concat,
@@ -246,11 +256,18 @@ class NasUnetSearch(nn.Module):
         alphas_up_norm = F.softmax(self.alphas_normal_up, dim=-1)
         alphas_down = F.softmax(self.alphas_down, dim=-1)
         alphas_up = F.softmax(self.alphas_up, dim=-1)
+        betas_down = []
+        betas_up = []
+        for i in range(self._meta_node_num):
+            offset = len(betas_down)
+            betas_down.append(F.softmax(self.betas_down[offset:offset + 2 + i], dim=-1))
+            betas_up.append(F.softmax(self.betas_up[offset:offset + 2 + i], dim=-1))
+        betas_down = torch.cat(betas_down, dim=0)
+        betas_up = torch.cat(betas_up, dim=0)
         gamma = F.softmax(self.gamma, dim=-1)
 
         if len(self.device_ids) == 1:
-            return self.net(x, alphas_down_norm, alphas_up_norm, alphas_down, alphas_up, self.betas_down,
-                            self.betas_up, gamma)
+            return self.net(x, alphas_down_norm, alphas_up_norm, alphas_down, alphas_up, betas_down, betas_up, gamma)
 
         # scatter x
         xs = nn.parallel.scatter(x, self.device_ids)

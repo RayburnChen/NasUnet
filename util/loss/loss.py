@@ -39,7 +39,7 @@ class MultiSegmentationLosses(nn.Module):
             self.weight_factors = weight_factors
 
     def forward(self, outputs, target):
-        return sum(w * self.loss([ot], target) for w, ot in zip(self.weight_factors, outputs))
+        return sum(w * self.loss([ot], target) for w, ot in zip(self.weight_factors, outputs)) / len(outputs)
 
 
 class SoftDiceLoss(nn.Module):

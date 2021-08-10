@@ -107,7 +107,7 @@ class Cell(nn.Module):
         for i in range(self._meta_node_num):
             # handle the un-consistent dimension
             tmp_list = []
-            betas_path = F.softmax(betas[offset:(offset + len(states))], dim=-1)
+            betas_path = betas[offset:(offset + len(states))]
             for j, h in enumerate(states):
                 tmp_list += [
                     betas_path[j] * self._ops[offset + j](h, weights_norm[offset + j], weights_chg[offset + j])]

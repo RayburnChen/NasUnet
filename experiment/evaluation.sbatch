@@ -68,7 +68,7 @@ python -V
 sleep 5
 #python ./train.py --config ../configs/nas_unet/nas_unet_promise12.yml --model nasunet --ft
 #python ./train.py --config ../configs/nas_unet/nas_unet_promise12.yml --model unet --ft
-python ./train.py --config ../configs/nas_unet/nas_unet_promise12.yml --model nasunet --ft --loss dice_ce --genotype "Genotype(down=[('avg_pool', 0), ('down_dil_conv', 1), ('down_conv', 1), ('dil_conv', 2), ('dil_conv', 2), ('dil_conv', 3), ('identity', 3), ('dil_conv', 4)], down_concat=range(2, 6), up=[('conv', 0), ('up_dil_conv', 1), ('up_cweight', 1), ('dil_conv', 2), ('dil_conv', 2), ('dil_conv', 3), ('dil_conv', 2), ('dil_conv', 4)], up_concat=range(2, 6))"
+python ./train.py --config ../configs/nas_unet/nas_unet_promise12.yml --model nasunet --ft --loss dice_ce --genotype "Genotype(down=[('down_dil_conv', 0), ('down_conv', 1), ('down_dil_conv', 1), ('dil_conv', 2), ('dil_conv', 2), ('dil_conv', 3)], down_concat=range(2, 5), up=[('dil_conv', 0), ('up_dil_conv', 1), ('dil_conv', 0), ('dil_conv', 2), ('dil_conv', 2), ('dil_conv', 3)], up_concat=range(2, 5), gamma=[1, 1, 1, 1])"
 
 nvidia-smi
 # deviceQuery

@@ -195,6 +195,9 @@ class SearchNetwork(object):
             print('alpha down:', F.softmax(self.model.alphas_down, dim=-1))
             print('alpha normal_up:', F.softmax(self.model.alphas_normal_up, dim=-1))
             print('alpha up:', F.softmax(self.model.alphas_up, dim=-1))
+            print('betas down:', F.softmax(self.model.betas_down, dim=-1))
+            print('betas up:', F.softmax(self.model.betas_up, dim=-1))
+            print('gamma:', F.softmax(self.model.gamma, dim=-1))
 
             # the performance may be unstable, before train in a degree
             if self.epoch >= self.cfg['searching']['alpha_begin']:
