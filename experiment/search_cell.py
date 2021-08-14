@@ -287,7 +287,9 @@ class SearchNetwork(object):
 
             # Update the network parameters
             self.model_optimizer.step()
+        _, _, dice = self.metric_train.get()
         self.writer.add_scalar('Train/Loss', self.train_loss_meter.avg, self.epoch)
+        self.writer.add_scalar('Train/dice', dice, self.epoch)
 
     def infer(self):
 

@@ -319,7 +319,9 @@ class Network(object):
             self.model_optimizer.step()
 
         # save in tensorboard scalars
+        _, _, dice = self.metric_train.get()
         self.writer.add_scalar('Train/loss', self.train_loss_meter.mloss(), self.epoch)
+        self.writer.add_scalar('Train/dice', dice, self.epoch)
 
     def val(self):
         self.model.eval()

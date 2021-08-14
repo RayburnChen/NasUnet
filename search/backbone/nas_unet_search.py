@@ -106,14 +106,21 @@ class SearchULikeCNN(nn.Module):
                 else:
                     ides = [sum(range(self._depth, self._depth - k, -1)) + j for k in range(i)]
                     # in0 = torch.cat([cell_out[idx] for idx in ides], dim=1)
-                    gamma_used = gamma[j:i + j, :]
-                    assert len(ides) == len(gamma_used), 'gamma size not match'
+                    # gamma_used = gamma[j:i + j, :]
+                    # assert len(ides) == len(gamma_used), 'gamma size not match'
                     # in0 = torch.cat(
                     #     [cell_out[ides[0]] * gam[0] + cell_out[idx] * gam[1] for idx, gam in zip(ides, gamma_used)],
                     #     dim=1)
-                    in0 = torch.cat(
-                        [cell_out[ides[i - 1 if i > 0 else 0]] * gamma_used[i][0] + cell_out[idx] * gamma_used[i][1] for
-                         i, idx in enumerate(ides)], dim=1)
+                    # in0 = torch.cat(
+                    #     [cell_out[ides[i - 1 if i > 0 else 0]] * gamma_used[i][0] + cell_out[idx] * gamma_used[i][1] for
+                    #      i, idx in enumerate(ides)], dim=1)
+                    in0 = cell_out[ides[0]]
+
+                    if i > 1:
+                        gamma_ides = [sum(range(self._depth - 2, self._depth - 2 - k, -1)) + j for k in range(i - 1)]
+                        in0 = torch.cat(
+                            [in0] + [cell_out[ides[k]] * gamma[idx][0] + cell_out[ides[k + 1]] * gamma[idx][1] for
+                                     k, idx in enumerate(gamma_ides)], dim=1)
                     in1 = cell_out[ides[-1] + 1]
                     ot = cell(in0, in1, weights_up_norm, weights_up, betas_up)
                     # if i + j < self._depth - 1:
@@ -166,7 +173,7 @@ class NasUnetSearch(nn.Module):
         self.betas_down = nn.Parameter(1e-3 * torch.randn(k))
         self.betas_up = nn.Parameter(1e-3 * torch.randn(k))
 
-        self.gamma = nn.Parameter(1e-3 * torch.randn(depth - 1, 2))
+        self.gamma = nn.Parameter(1e-3 * torch.randn(sum(range(depth - 1)), 2))
 
         self._arch_parameters = [
             self.alphas_down,
