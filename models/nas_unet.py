@@ -82,7 +82,6 @@ class NasUnet(BaseNet):
 
         assert self._depth >= 2, 'depth must >= 2'
         double_down = 2 if self._double_down_channel else 1
-        # 192, 192, 64
         c_s0, c_s1 = self._multiplier * c, self._multiplier * c
         c_in0, c_in1, c_curr = c_s0, c_s1, c
 
@@ -119,7 +118,8 @@ class NasUnet(BaseNet):
             up_f = []
             up_block = nn.ModuleList()
             for j in range(self._depth - i):
-                if i + j < self._depth - 1 and self.gamma[i + j] == 0:
+                gamma_ides = sum(range(self._depth - 2, self._depth - i - 1, -1)) + j
+                if i + j < self._depth - 1 and self.gamma[gamma_ides] == 0:
                     filters = [0, 0, 0, 'None']
                     up_cell = None
                 else:
@@ -157,7 +157,7 @@ class NasUnet(BaseNet):
                 elif i == 0:
                     ot = cell(cell_out[-2], cell_out[-1])
                 else:
-                    if i + j < self._depth - 1 and self.gamma[i + j] == 0:
+                    if i + j < self._depth - 1 and self.gamma[sum(range(self._depth - 2, self._depth - i - 1, -1)) + j] == 0:
                         ot = None
                     else:
                         # ides = [sum(range(self._depth, self._depth - i+1)) + j]

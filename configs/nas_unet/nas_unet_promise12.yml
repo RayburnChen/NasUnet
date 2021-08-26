@@ -50,7 +50,7 @@ training:
     depth: 5
     epoch: 3600
 #    batch_size: 26
-    batch_size: 14
+    batch_size: 12
 #    batch_size: 8
 #    batch_size: 2
     report_freq: 10
@@ -59,11 +59,11 @@ training:
     double_down_channel: False
     deep_supervision: True
     grad_clip: 3
-    max_patience: 150
+    max_patience: 300
     model_optimizer:
         name: 'sgd'
-        lr: 5.5e-3
-        weight_decay: 5.0e-3
+        lr: 6.0e-3
+        weight_decay: 5.0e-4
         momentum: 0.9
 #        name: 'adam'
 #        lr: 1.0e-3

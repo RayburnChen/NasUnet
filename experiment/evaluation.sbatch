@@ -17,7 +17,7 @@
 # Request CPU resource for a serial job
 #SBATCH --ntasks=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=1
+#SBATCH --cpus-per-task=2
 
 # Request for GPU, 
 #SBATCH --gres=gpu:V100:1
@@ -59,7 +59,7 @@ sleep 5
 python -V
 
 export PROJECT=az20
-export CONDA_ENVS=/projects/$PROJECT/$USER/conda_envs
+export CONDA_ENVS=/projects/$PROJECT/rche0046/conda_envs
 source activate $CONDA_ENVS/ruibinEnv
 python -V
 
@@ -68,7 +68,7 @@ python -V
 sleep 5
 #python ./train.py --config ../configs/nas_unet/nas_unet_promise12.yml --model nasunet --ft
 #python ./train.py --config ../configs/nas_unet/nas_unet_promise12.yml --model unet --ft
-python ./train.py --config ../configs/nas_unet/nas_unet_promise12.yml --model nasunet --ft --loss dice_ce --genotype "Genotype(down=[('down_dil_conv', 0), ('down_dil_conv', 1), ('down_cweight', 0), ('dil_conv', 2)], down_concat=range(2, 4), up=[('dil_conv', 0), ('up_dil_conv', 1), ('up_dil_conv', 1), ('dil_conv', 2)], up_concat=range(2, 4), gamma=[1, 1, 1, 1])"
+python ./train.py --config ../configs/nas_unet/nas_unet_promise12.yml --model nasunet --ft --loss dice_ce --depth 7 --genotype "Genotype(down=[('down_dil_conv', 0), ('down_dil_conv', 1), ('down_cweight', 0), ('dil_conv', 2)], down_concat=range(2, 4), up=[('dil_conv', 0), ('up_dil_conv', 1), ('up_dil_conv', 1), ('dil_conv', 2)], up_concat=range(2, 4), gamma=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])"
 
 nvidia-smi
 # deviceQuery

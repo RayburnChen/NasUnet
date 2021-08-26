@@ -48,6 +48,8 @@ class Network(object):
         parser.add_argument('--warm', nargs='?', type=int, default=0, help='warm up from pre epoch')
         parser.add_argument('--genotype', nargs='?', type=str, default='', help='Model architecture')
         parser.add_argument('--loss', nargs='?', type=str, default='', help='Loss function')
+        parser.add_argument('--depth', nargs='?', type=int, default=-1, help='Loss function')
+        parser.add_argument('--batch_size', nargs='?', type=int, default=-1, help='Loss function')
 
         self.args = parser.parse_args()
 
@@ -90,7 +92,7 @@ class Network(object):
         self.nweight = trainset.class_weight
         self.logger.info('dataset weights: {}'.format(self.nweight))
         self.n_classes = trainset.num_class
-        self.batch_size = self.cfg['training']['batch_size']
+        self.batch_size = self.args.batch_size if self.args.batch_size > 0 else self.cfg['training']['batch_size']
         kwargs = {'num_workers': self.cfg['training']['n_workers'], 'pin_memory': True}
 
         # Split val dataset
@@ -117,7 +119,7 @@ class Network(object):
     def _init_model(self):
 
         # Setup loss function
-        depth = self.cfg['training']['depth']
+        depth = self.args.depth if self.args.depth > 0 else self.cfg['training']['depth']
         supervision = self.cfg['training']['deep_supervision']
         loss_name = self.args.loss if len(self.args.loss) > 0 else self.cfg['training']['loss']['name']
         criterion = MultiSegmentationLosses(loss_name, depth) if supervision else SegmentationLosses(loss_name)

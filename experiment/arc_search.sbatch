@@ -17,7 +17,7 @@
 # Request CPU resource for a serial job
 #SBATCH --ntasks=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=1
+#SBATCH --cpus-per-task=2
 
 # Request for GPU, 
 #SBATCH --gres=gpu:V100:1
@@ -60,7 +60,7 @@ sleep 5
 python -V
 
 export PROJECT=az20
-export CONDA_ENVS=/projects/$PROJECT/$USER/conda_envs
+export CONDA_ENVS=/projects/$PROJECT/rche0046/conda_envs
 source activate $CONDA_ENVS/ruibinEnv
 python -V
 
