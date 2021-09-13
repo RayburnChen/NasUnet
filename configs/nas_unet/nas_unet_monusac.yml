@@ -12,7 +12,7 @@ searching:
     depth: 5
     epoch: 1000
     batch_size: 3
-#    batch_size: 2
+#    batch_size: 1
     report_freq: 20
     n_workers: 2
     alpha_begin: 15

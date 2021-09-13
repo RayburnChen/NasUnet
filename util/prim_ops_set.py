@@ -262,7 +262,7 @@ class CWeightOp(BaseOp):
 
     def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, dilation=1, groups=None,
                  bias=False, has_shuffle=False, use_transpose=False, output_padding=0, norm_type='gn',
-                 use_norm=False, affine=True, act_func=None, dropout_rate=0, ops_order='weight'):
+                 use_norm=False, affine=True, act_func=None, dropout_rate=0, ops_order='weight_act'):
         super(CWeightOp, self).__init__(in_channels, out_channels, norm_type, use_norm, affine, act_func, dropout_rate,
                                         ops_order)
 

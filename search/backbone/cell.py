@@ -64,10 +64,10 @@ class Cell(nn.Module):
         if self._cell_type == 'down':
             # Note: the s0 size is twice than s1!
             self.preprocess0 = ConvOps(c_prev_prev, c, kernel_size=1, stride=2, affine=False,
-                                       ops_order='act_weight_norm')
+                                       ops_order='weight_norm_act')
         else:
-            self.preprocess0 = ConvOps(c_prev_prev, c, kernel_size=1, affine=False, ops_order='act_weight_norm')
-        self.preprocess1 = ConvOps(c_prev, c, kernel_size=1, affine=False, ops_order='act_weight_norm')
+            self.preprocess0 = ConvOps(c_prev_prev, c, kernel_size=1, affine=False, ops_order='weight_norm_act')
+        self.preprocess1 = ConvOps(c_prev, c, kernel_size=1, affine=False, ops_order='weight_norm_act')
 
         self._ops = nn.ModuleList()
 

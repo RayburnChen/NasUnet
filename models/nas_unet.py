@@ -12,10 +12,10 @@ class BuildCell(nn.Module):
 
         if cell_type == 'down':
             # Note: the s0 size is twice than s1!
-            self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, ops_order='act_weight_norm')
+            self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, ops_order='weight_norm_act')
         else:
-            self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, ops_order='act_weight_norm')
-        self.preprocess1 = ConvOps(c_in1, c, kernel_size=1, ops_order='act_weight_norm')
+            self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, ops_order='weight_norm_act')
+        self.preprocess1 = ConvOps(c_in1, c, kernel_size=1, ops_order='weight_norm_act')
 
         if cell_type == 'up':
             op_names, idx = zip(*genotype.up)
@@ -23,6 +23,8 @@ class BuildCell(nn.Module):
         else:
             op_names, idx = zip(*genotype.down)
             concat = genotype.down_concat
+
+        # self.post_process = ConvOps(c * len(concat), c, kernel_size=1, ops_order='act_weight_norm')
         self.dropout_prob = dropout_prob
         self._compile(c, op_names, idx, concat)
 
@@ -87,7 +89,7 @@ class NasUnet(BaseNet):
         c_in0, c_in1, c_curr = c_s0, c_s1, c
 
         self.blocks = nn.ModuleList()
-        self.stem0 = ConvOps(in_channels, c_in0, kernel_size=1, ops_order='weight_norm')
+        self.stem0 = ConvOps(in_channels, c_in0, kernel_size=1, ops_order='weight_norm_act')
         skip_down = ConvOps(c_in0, c_in1, kernel_size=1, stride=2, ops_order='weight_norm')
         self.stem1 = BasicBlock(c_in0, c_in1, stride=2, dilation=1, downsample=skip_down, previous_dilation=1,
                                 norm_layer=nn.BatchNorm2d)
@@ -140,12 +142,12 @@ class NasUnet(BaseNet):
             self.blocks += [up_block]
 
         self.head_block = nn.ModuleList()
-        # if self._supervision:
-        #     for i in range(1, depth):
-        #         c_last = self._multiplier * num_filters[i][0][2]
-        #         self.head_block += [Head(c_last, nclass)]
-        # else:
-        c_last = self._multiplier * num_filters[-1][0][2]
+        if self._supervision:
+            for i in range(1, depth):
+                c_last = self._multiplier * num_filters[i][0][2]
+                self.head_block += [Head(c_last, nclass)]
+        else:
+            c_last = self._multiplier * num_filters[-1][0][2]
         self.head_block += [Head(c_last, nclass)]
 
     def forward(self, x):
@@ -171,10 +173,10 @@ class NasUnet(BaseNet):
                         in1 = cell_out[ides[-1] + 1]
                         ot = cell(in0, in1)
                         if j == 0 and self._supervision:
-                            final_out.append(self.head_block[-1](ot))
+                            final_out.append(self.head_block[i-1](ot))
                 cell_out.append(ot)
 
-        gpu_memory_log()
+        # gpu_memory_log()
         del cell_out
         if self._supervision:
             return final_out
