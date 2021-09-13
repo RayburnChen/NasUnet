@@ -68,7 +68,7 @@ python -V
 
 sleep 5
 #python ./search_cell.py --config ../configs/nas_unet/nas_unet_promise12.yml
-python ./search_cell.py --config ../configs/nas_unet/nas_unet_chaos.yml
+python ./search_cell.py --config ../configs/nas_unet/nas_unet_monusac.yml
 
 nvidia-smi
 # deviceQuery

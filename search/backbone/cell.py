@@ -69,6 +69,8 @@ class Cell(nn.Module):
             self.preprocess0 = ConvOps(c_prev_prev, c, kernel_size=1, affine=False, ops_order='weight_norm_act')
         self.preprocess1 = ConvOps(c_prev, c, kernel_size=1, affine=False, ops_order='weight_norm_act')
 
+        self.post_process = ConvOps(c * self._meta_node_num, c, kernel_size=1, ops_order='weight_norm_act')
+
         self._ops = nn.ModuleList()
 
         idx_up_or_down_start = 0 if self._cell_type == 'down' else 1
@@ -116,8 +118,7 @@ class Cell(nn.Module):
             offset += len(states)
             states.append(s)
 
-        # concat last 3 states
-        return torch.cat(states[-self._multiplier:], dim=1)
+        return self.post_process(torch.cat(states[-self._multiplier:], dim=1))
 
 
 class OpType(Enum):
