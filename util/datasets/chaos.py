@@ -15,7 +15,8 @@ def make_dataset(root, dirname, type='CT', is_dup=False):
     for image_name in images:
         if type == 'CT': # two types batch
             if 'IMG' in image_name:
-                image_mask_name = 'liver_GT_' + image_name[:-4].split('-')[-1][2:] + '.png'
+                id_num = int(image_name[:-4].split('-')[-1][2:]) - 1
+                image_mask_name = 'liver_GT_' + f'{id_num:03}' + '.png'
             else:
                 image_mask_name = 'liver_GT_' + image_name[:-4].split(',')[0][2:] + '.png'
         else:

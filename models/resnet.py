@@ -25,6 +25,7 @@ class BasicBlock(nn.Module):
     """ResNet BasicBlock
     """
     expansion = 1
+
     def __init__(self, inplanes, planes, stride=1, dilation=1, downsample=None, previous_dilation=1,
                  norm_layer=None):
         super(BasicBlock, self).__init__()
@@ -62,6 +63,7 @@ class Bottleneck(nn.Module):
     """
     # pylint: disable=unused-argument
     expansion = 4
+
     def __init__(self, inplanes, planes, stride=1, dilation=1,
                  downsample=None, previous_dilation=1, norm_layer=None):
         super(Bottleneck, self).__init__()
@@ -80,10 +82,10 @@ class Bottleneck(nn.Module):
         self.stride = stride
 
     def _sum_each(self, x, y):
-        assert(len(x) == len(y))
+        assert (len(x) == len(y))
         z = []
         for i in range(len(x)):
-            z.append(x[i]+y[i])
+            z.append(x[i] + y[i])
         return z
 
     def forward(self, x):
@@ -133,6 +135,7 @@ class ResNet(nn.Module):
 
         - Yu, Fisher, and Vladlen Koltun. "Multi-scale context aggregation by dilated convolutions."
     """
+
     # pylint: disable=unused-variable
     def __init__(self, block, layers, num_classes=1000, dilated=False, multi_grid=False,
                  deep_base=True, norm_layer=nn.BatchNorm2d):

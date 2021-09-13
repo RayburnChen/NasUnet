@@ -12,18 +12,18 @@ searching:
     depth: 5
     epoch: 1000
 #    batch_size: 16
-    batch_size: 9
-#    batch_size: 1
+#    batch_size: 9
+    batch_size: 3
     report_freq: 20
     n_workers: 2
     alpha_begin: 15
-    max_patience: 40
+    max_patience: 50
     gpu: True
     multi_gpus: True
     sharing_normal: False
     double_down_channel: False
     deep_supervision: True
-    meta_node_num: 2
+    meta_node_num: 4
     grad_clip: 5
     train_portion: 0.5
     model_optimizer:
@@ -35,7 +35,6 @@ searching:
         name: 'adam'
 #        lr: 3.0e-4
         lr: 1.0e-4
-#        lr: 5.0e-4
 #        weight_decay: 5.0e-3
         weight_decay: 1.0e-3
         betas: !!python/tuple [0.5, 0.999]
@@ -55,7 +54,7 @@ training:
 #    batch_size: 2
     report_freq: 10
     n_workers: 2
-    multi_gpus: False
+    multi_gpus: True
     double_down_channel: False
     deep_supervision: True
     grad_clip: 3

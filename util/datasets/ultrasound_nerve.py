@@ -6,6 +6,7 @@ from .base import BaseDataset
 from PIL import Image
 from util.augmentations import *
 
+
 def make_dataset(root, dirname):
     base_path = os.path.join(root, dirname)
     images = os.listdir(base_path)
@@ -24,6 +25,7 @@ def make_dataset(root, dirname):
 
     return images_list
 
+
 class UltraNerve(BaseDataset):
     BASE_DIR = 'ultrasound-nerve'
     NUM_CLASS = 2
@@ -32,26 +34,28 @@ class UltraNerve(BaseDataset):
     CLASS_WEIGHTS = None
     mean = [0.3919]
     std = [0.2212]
-    def __init__(self, root,  split='train', mode=None, ft=False):
-        super(UltraNerve, self).__init__(root, split, mode, norm = {'mu': self.mean, 'std': self.std})
+
+    def __init__(self, root, split='train', mode=None, ft=False):
+        super(UltraNerve, self).__init__(root, split, mode, norm={'mu': self.mean, 'std': self.std})
         self.root = os.path.expanduser(root)
         self.ft = ft
         self.joint_transform = Compose([
             RandomTranslate(offset=(0.2, 0.2)),
             RandomVerticallyFlip(),
             RandomHorizontallyFlip(),
-            RandomElasticTransform(alpha = 1.5, sigma = 0.07),
-            ])
+            RandomElasticTransform(alpha=1.5, sigma=0.07),
+        ])
         base_path = os.path.join(self.root, self.BASE_DIR)
 
         if mode in ['train', 'val']:
-            self.data_info = make_dataset(base_path, 'data_clean') # 'data_clean': after clean, before: 'train'
+            self.data_info = make_dataset(base_path, 'data_clean')  # 'data_clean': after clean, before: 'train'
         else:
             self.data_info = make_dataset(base_path, 'test')
 
         if len(self.data_info) == 0:
             raise (RuntimeError("Found 0 images in subfolders of: " + root + "\n"
-            "Supported image extensions are: " + ",".join('tif')))
+                                                                             "Supported image extensions are: " + ",".join(
+                'tif')))
 
     def __getitem__(self, index):
         img_path, target_path = self.data_info[index][0], self.data_info[index][1]
@@ -82,10 +86,23 @@ class UltraNerve(BaseDataset):
         # 4. normalize for img
         img = self.img_normalize(img)
 
-        if target is not None and not isinstance(target, str) :
+        if target is not None and not isinstance(target, str):
             target[target == 255] = 1
 
         return img, target
 
     def __len__(self):
         return len(self.data_info)
+
+# import os
+#
+# import tifffile as tiff
+# from PIL import Image
+#
+# if __name__ == '__main__':
+#     img_path = '../train_tiny_data/imgseg/ultrasound-nerve/train'
+#     for root, dirs, files in os.walk(img_path):
+#         for file in files:
+#             im = tiff.imread(os.path.join(root, file))
+#             im = Image.fromarray(im)
+#             im.save(os.path.join(root, 'data_clean', file.replace('.tif', '.png')), "PNG")

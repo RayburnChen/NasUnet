@@ -112,11 +112,6 @@ class Cell(nn.Module):
                 tmp_list += [
                     betas_path[j] * self._ops[offset + j](h, weights_norm[offset + j], weights_chg[offset + j])]
 
-            # TODO
-            # for ss in tmp_list:
-            #     print(ss.size())
-            # print('-----')
-
             s = sum(tmp_list)
             offset += len(states)
             states.append(s)

@@ -1,5 +1,7 @@
+from util.gpu_memory_log import gpu_memory_log
 from util.prim_ops_set import *
 from .base import BaseNet
+from .resnet import BasicBlock
 
 
 class BuildCell(nn.Module):
@@ -45,15 +47,14 @@ class BuildCell(nn.Module):
             h1 = states[self._indices[2 * i]]
             h2 = states[self._indices[2 * i + 1]]
 
-            op1 = self._ops[2 * i]
-            op2 = self._ops[2 * i + 1]
-
-            h1 = op1(h1)
-            h2 = op2(h2)
+            h1 = self._ops[2 * i](h1)
+            h2 = self._ops[2 * i + 1](h2)
 
             s = h1 + h2
             states += [s]
-        return torch.cat([states[i] for i in self._concat], dim=1)
+
+        result = torch.cat([states[i] for i in self._concat], dim=1)
+        return result
 
 
 class Head(nn.Module):
@@ -87,7 +88,9 @@ class NasUnet(BaseNet):
 
         self.blocks = nn.ModuleList()
         self.stem0 = ConvOps(in_channels, c_in0, kernel_size=1, ops_order='weight_norm')
-        self.stem1 = ConvOps(in_channels, c_in1, kernel_size=3, stride=2, ops_order='weight_norm')
+        skip_down = ConvOps(c_in0, c_in1, kernel_size=1, stride=2, ops_order='weight_norm')
+        self.stem1 = BasicBlock(c_in0, c_in1, stride=2, dilation=1, downsample=skip_down, previous_dilation=1,
+                                norm_layer=nn.BatchNorm2d)
 
         num_filters = []
         down_f = []
@@ -151,9 +154,11 @@ class NasUnet(BaseNet):
         for i, block in enumerate(self.blocks):
             for j, cell in enumerate(block):
                 if i == 0 and j == 0:
+                    # stem0: 1x256x256 -> 64x256x256
                     ot = cell(x)
                 elif i == 0 and j == 1:
-                    ot = cell(x)
+                    # stem1: 64x256x256 -> 64x128x128
+                    ot = cell(cell_out[-1])
                 elif i == 0:
                     ot = cell(cell_out[-2], cell_out[-1])
                 else:
@@ -169,16 +174,9 @@ class NasUnet(BaseNet):
                             final_out.append(self.head_block[-1](ot))
                 cell_out.append(ot)
 
+        gpu_memory_log()
         del cell_out
         if self._supervision:
             return final_out
         else:
             return [self.head_block[-1](ot)]
-
-
-def get_nas_unet(dataset='pascal_voc', **kwargs):
-    # infer number of classes
-    from util.datasets import datasets
-    model = NasUnet(datasets[dataset.lower()].NUM_CLASS, datasets[dataset.lower()].IN_CHANNELS,
-                    **kwargs)
-    return model

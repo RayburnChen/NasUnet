@@ -41,5 +41,8 @@ Search on Pascal voc
 #                            up=[('conv', 0), ('up_dil_conv', 1), ('conv', 2), ('up_cweight', 1)], up_concat=range(2, 4))
 #
 #
-# NASUNET = NAS_UNET_V2
+
+NAS_UNET_V2 = Genotype(down=[('down_dil_conv', 0), ('down_dil_conv', 1), ('down_cweight', 0), ('dil_conv', 2)], down_concat=range(2, 4), up=[('dil_conv', 0), ('up_dil_conv', 1), ('up_dil_conv', 1), ('dil_conv', 2)], up_concat=range(2, 4), gamma=[1, 1, 1, 1, 1, 1])
+
+NASUNET = NAS_UNET_V2
 

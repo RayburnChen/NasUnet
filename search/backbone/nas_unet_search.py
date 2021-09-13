@@ -1,8 +1,11 @@
 import torch
 from torch.functional import F
+
+from models import BasicBlock
 from util.prim_ops_set import *
 from util.genotype import *
 from search.backbone.cell import Cell
+
 
 
 class Head(nn.Module):
@@ -37,7 +40,9 @@ class SearchULikeCNN(nn.Module):
 
         self.blocks = nn.ModuleList()
         self.stem0 = ConvOps(in_channels, c_in0, kernel_size=1, ops_order='weight_norm')
-        self.stem1 = ConvOps(in_channels, c_in1, kernel_size=3, stride=2, ops_order='weight_norm')
+        skip_down = ConvOps(c_in0, c_in1, kernel_size=1, stride=2, ops_order='weight_norm')
+        self.stem1 = BasicBlock(c_in0, c_in1, stride=2, dilation=1, downsample=skip_down, previous_dilation=1,
+                                norm_layer=nn.BatchNorm2d)
 
         num_filters = []
         down_f = []
@@ -98,9 +103,11 @@ class SearchULikeCNN(nn.Module):
         for i, block in enumerate(self.blocks):
             for j, cell in enumerate(block):
                 if i == 0 and j == 0:
+                    # stem0: 1x256x256 -> 64x256x256
                     ot = cell(x)
                 elif i == 0 and j == 1:
-                    ot = cell(x)
+                    # stem1: 64x256x256 -> 64x128x128
+                    ot = cell(cell_out[-1])
                 elif i == 0:
                     ot = cell(cell_out[-2], cell_out[-1], weights_down_norm, weights_down, betas_down)
                 else:

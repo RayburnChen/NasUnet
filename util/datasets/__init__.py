@@ -2,6 +2,7 @@ from torchvision.datasets import *
 from .base import *
 from .coco import COCOSegmentation
 from .ade20k import ADE20KSegmentation
+from .monusac import MoNuSAC
 from .pascal_voc import VOCSegmentation
 from .pascal_aug import VOCAugSegmentation
 from .pcontext import ContextSegmentation
@@ -10,7 +11,7 @@ from .ultrasound_nerve import UltraNerve
 from .bladder import Bladder
 from .chaos import CHAOS
 from .promise12 import Promise12
-from .camvid import  CamVid
+from .camvid import CamVid
 
 datasets = {
     'coco': COCOSegmentation,
@@ -22,9 +23,10 @@ datasets = {
     'cifar10': CIFAR10,
     'ultrasound_nerve': UltraNerve,
     'bladder': Bladder,
-    'chaos' : CHAOS,
+    'chaos': CHAOS,
     'promise12': Promise12,
-    'camvid': CamVid
+    'camvid': CamVid,
+    'monusac': MoNuSAC,
 }
 
 acronyms = {
@@ -40,13 +42,12 @@ acronyms = {
     'bladder': 'bladder',
     'chaos': 'chaos',
     'promise12': 'promise12',
-    'camvid': 'camvid'
+    'camvid': 'camvid',
+    'monusac': 'monusac',
 }
 
 dir = '../train_tiny_data/imgseg/'
-#=
-#dir = '../../../training_data/imageSeg/'
+
 
 def get_dataset(name, path=dir, **kwargs):
-    return datasets[name.lower()](root = path, **kwargs)
-
+    return datasets[name.lower()](root=path, **kwargs)

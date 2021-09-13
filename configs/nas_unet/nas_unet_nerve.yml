@@ -1,3 +1,4 @@
+seed: 0
 model:
     arch: nas-unet
 data:
@@ -7,55 +8,69 @@ data:
     img_rows: 'same'
     img_cols: 'same'
 searching:
-    init_channels: 16
-    depth: 4
-    epoch: 300
-    batch_size: 6
+    init_channels: 32
+    depth: 5
+    epoch: 1000
+    batch_size: 9
+#    batch_size: 2
     report_freq: 20
     n_workers: 2
-    alpha_begin: 10
-    max_patience: 40
+    alpha_begin: 15
+    max_patience: 50
     gpu: True
     multi_gpus: True
     sharing_normal: True
     double_down_channel: False
-    meta_node_num: 3
+    deep_supervision: True
+    meta_node_num: 2
     grad_clip: 5
     train_portion: 0.5
     model_optimizer:
-        name: 'adabound'
-        lr: 1.0e-3
-        weight_decay: 5.0e-4
+        name: 'sgd'
+        lr: 0.025
+        weight_decay: 3.0e-4
+        momentum: 0.9
+#        name: 'adabound'
+#        lr: 1.0e-3
+#        weight_decay: 5.0e-4
     arch_optimizer:
         name: 'adam'
-        lr: 3.0e-4
-        weight_decay: 5.0e-3
+#        lr: 3.0e-4
+        lr: 1.0e-4
+#        weight_decay: 5.0e-3
+        weight_decay: 1.0e-3
+        betas: !!python/tuple [ 0.5, 0.999 ]
     loss:
-        name: 'dice_loss'
+        name: 'dice_ce'
         size_average: False
-        aux_weight:
     resume:
 training:
-    geno_type: NAS_UNET_V3
-    init_channels: 48
-    depth: 6
-    epoch: 400
-    batch_size: 10
+    geno_type: NASUNET
+    init_channels: 32
+    depth: 5
+    epoch: 3600
+    batch_size: 12
     report_freq: 10
-    n_workers: 4
-    multi_gpus: False
+    n_workers: 2
+    multi_gpus: True
     double_down_channel: False
+    deep_supervision: True
     grad_clip: 5
-    max_patience: 50
+    max_patience: 300
     model_optimizer:
-        name: 'adabound'
-        lr: 1.0e-3
+        name: 'sgd'
+        lr: 6.0e-3
         weight_decay: 5.0e-4
+        momentum: 0.9
+#        name: 'adabound'
+#        lr: 1.0e-3
+#        weight_decay: 5.0e-4
     loss:
-        name: 'cross_entropy_with_dice'
-        aux_weight: 0.2
+        name: 'dice_ce'
     backbone:
     lr_schedule:
-        name: 'exp_lr'
-        gamma: 0.995
+        name: 'cos'
+        T_max: 100
+#        name: 'exp_lr'
+#        gamma: 0.995
     resume:

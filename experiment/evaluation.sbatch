@@ -23,6 +23,9 @@
 #SBATCH --gres=gpu:V100:1
 #SBATCH --partition=m3g
 
+# To specify you need a 32GB V100, you also need to add:
+# SBATCH --constraint=V100-32G
+
 # SBATCH --gres=gpu:P100:1
 # SBATCH --partition=m3h
 
@@ -66,9 +69,9 @@ python -V
 #conda install --file requirements.txt
 
 sleep 5
-#python ./train.py --config ../configs/nas_unet/nas_unet_promise12.yml --model nasunet --ft
-#python ./train.py --config ../configs/nas_unet/nas_unet_promise12.yml --model unet --ft
-python ./train.py --config ../configs/nas_unet/nas_unet_promise12.yml --model nasunet --ft --loss dice_ce --depth 7 --genotype "Genotype(down=[('down_dil_conv', 0), ('down_dil_conv', 1), ('down_cweight', 0), ('dil_conv', 2)], down_concat=range(2, 4), up=[('dil_conv', 0), ('up_dil_conv', 1), ('up_dil_conv', 1), ('dil_conv', 2)], up_concat=range(2, 4), gamma=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])"
+python ./train.py --config ../configs/nas_unet/nas_unet_promise12.yml --model nasunet --ft --loss dice_ce --depth 5 --genotype "Genotype(down=[('down_dil_conv', 0), ('down_dil_conv', 1), ('avg_pool', 0), ('dil_conv', 2), ('down_dep_conv', 1), ('dil_conv', 3)], down_concat=range(2, 5), up=[('dil_conv', 0), ('up_dil_conv', 1), ('dil_conv', 0), ('dil_conv', 2), ('up_dil_conv', 1), ('dil_conv', 3)], up_concat=range(2, 5), gamma=[0, 0, 0, 0, 0, 0])"
+#python ./train.py --config ../configs/nas_unet/nas_unet_monusac.yml --model nasunet --loss dice_ce --batch_size 14
+#python ./train.py --config ../configs/nas_unet/nas_unet_chaos.yml --model unet --loss dice_ce
 
 nvidia-smi
 # deviceQuery

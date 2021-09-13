@@ -1,6 +1,8 @@
 """Model store which provides pretrained models."""
 from __future__ import print_function
+
 __all__ = ['get_model_file', 'purge']
+
 import os
 import zipfile
 
@@ -22,15 +24,17 @@ _model_sha1 = {name: checksum for checksum, name in [
     ('9f27ea13d514d7010e59988341bcbd4140fcc33d', 'encnet_resnet101_pcontext'),
     ('07ac287cd77e53ea583f37454e17d30ce1509a4a', 'encnet_resnet50_ade'),
     ('3f54fa3b67bac7619cd9b3673f5c8227cf8f4718', 'encnet_resnet101_ade'),
-    ]}
+]}
 
 encoding_repo_url = 'https://hangzh.s3.amazonaws.com/'
 _url_format = '{repo_url}encoding/models/{file_name}.zip'
+
 
 def short_hash(name):
     if name not in _model_sha1:
         raise ValueError('Pretrained model for {name} is not available.'.format(name=name))
     return _model_sha1[name][:8]
+
 
 def get_model_file(name, root=os.path.join('~', '.encoding', 'models')):
     r"""Return location for the pretrained on local file system.
@@ -52,7 +56,7 @@ def get_model_file(name, root=os.path.join('~', '.encoding', 'models')):
     """
     file_name = '{name}-{short_hash}'.format(name=name, short_hash=short_hash(name))
     root = os.path.expanduser(root)
-    file_path = os.path.join(root, file_name+'.pth')
+    file_path = os.path.join(root, file_name + '.pth')
     sha1_hash = _model_sha1[name]
     if os.path.exists(file_path):
         if check_sha1(file_path, sha1_hash):
@@ -66,7 +70,7 @@ def get_model_file(name, root=os.path.join('~', '.encoding', 'models')):
     if not os.path.exists(root):
         os.makedirs(root)
 
-    zip_file_path = os.path.join(root, file_name+'.zip')
+    zip_file_path = os.path.join(root, file_name + '.zip')
     repo_url = os.environ.get('ENCODING_REPO', encoding_repo_url)
     if repo_url[-1] != '/':
         repo_url = repo_url + '/'
@@ -82,6 +86,7 @@ def get_model_file(name, root=os.path.join('~', '.encoding', 'models')):
     else:
         raise ValueError('Downloaded file has different hash. Please try again.')
 
+
 def purge(root=os.path.join('~', '.encoding', 'models')):
     r"""Purge all pretrained model files in local file store.
 
@@ -95,6 +100,7 @@ def purge(root=os.path.join('~', '.encoding', 'models')):
     for f in files:
         if f.endswith(".pth"):
             os.remove(os.path.join(root, f))
+
 
 def pretrained_model_list():
     return list(_model_sha1.keys())

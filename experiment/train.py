@@ -11,6 +11,8 @@ import torch.nn as nn
 from torch.utils import data
 import torch.backends.cudnn as cudnn
 
+from util.gpu_memory_log import gpu_memory_log
+
 sys.path.append('..')
 from util.loss.loss import SegmentationLosses, MultiSegmentationLosses
 from util.datasets import get_dataset
@@ -405,3 +407,5 @@ class Network(object):
 if __name__ == '__main__':
     train_network = Network()
     train_network.run()
+
+
