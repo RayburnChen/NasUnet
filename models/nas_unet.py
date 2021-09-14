@@ -177,7 +177,7 @@ class NasUnet(BaseNet):
                             final_out.append(self.head_block[-1](ot))
                 cell_out.append(ot)
 
-        gpu_memory_log()
+        # gpu_memory_log()
         del cell_out
         if self._supervision:
             return final_out
