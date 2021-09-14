@@ -69,7 +69,7 @@ class Cell(nn.Module):
             self.preprocess0 = ConvOps(c_prev_prev, c, kernel_size=1, affine=False, ops_order='weight_norm')
         self.preprocess1 = ConvOps(c_prev, c, kernel_size=1, affine=False, ops_order='weight_norm')
 
-        self.post_process = ConvOps(c * self._meta_node_num, c, kernel_size=1, ops_order='weight_norm_act')
+        self.post_process = ConvOps(c * self._meta_node_num, c, kernel_size=1, ops_order='weight_norm')
 
         self._ops = nn.ModuleList()
 
