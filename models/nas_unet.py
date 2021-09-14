@@ -24,7 +24,7 @@ class BuildCell(nn.Module):
             op_names, idx = zip(*genotype.down)
             concat = genotype.down_concat
 
-        self.post_process = ConvOps(c * len(concat), c, kernel_size=1, ops_order='weight_norm_act')
+        self.post_process = ConvOps(c * len(concat), c, kernel_size=1, ops_order='weight_norm')
         self.dropout_prob = dropout_prob
         self._compile(c, op_names, idx, concat)
 
