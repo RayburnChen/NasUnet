@@ -142,11 +142,6 @@ class NasUnet(BaseNet):
             self.blocks += [up_block]
 
         self.head_block = nn.ModuleList()
-        # if self._supervision:
-        #     for i in range(1, depth):
-        #         c_last = self._multiplier * num_filters[i][0][2]
-        #         self.head_block += [Head(c_last, nclass)]
-        # else:
 
         c_last = self._multiplier * num_filters[-1][0][2]
         self.head_block += [Head(c_last, nclass)]
