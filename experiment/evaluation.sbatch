@@ -19,7 +19,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=2
 
-# Request for GPU, 
+# Request for GPU,
 #SBATCH --gres=gpu:V100:1
 #SBATCH --partition=m3g
 
@@ -69,9 +69,9 @@ python -V
 #conda install --file requirements.txt
 
 sleep 5
-python ./train.py --config ../configs/nas_unet/nas_unet_promise12.yml --model nasunet --ft --loss dice_ce --depth 5 --genotype "Genotype(down=[('down_dil_conv', 0), ('down_dil_conv', 1), ('down_cweight', 0), ('dil_conv', 2), ('down_cweight', 1), ('dil_conv', 3), ('dil_conv', 2), ('dil_conv', 4)], down_concat=range(2, 6), up=[('dil_conv', 0), ('up_dil_conv', 1), ('up_dil_conv', 1), ('dil_conv', 2), ('up_dil_conv', 1), ('dil_conv', 3), ('dil_conv', 2), ('dil_conv', 4)], up_concat=range(2, 6), gamma=[0, 0, 0, 0, 0, 0])"
+#python ./train.py --config ../configs/nas_unet/nas_unet_promise12.yml --model nasunet --ft --loss dice_ce --depth 5 --genotype "Genotype(down=[('down_dil_conv', 0), ('down_dil_conv', 1), ('down_cweight', 0), ('dil_conv', 2), ('down_cweight', 1), ('dil_conv', 3), ('dil_conv', 2), ('dil_conv', 4)], down_concat=range(2, 6), up=[('dil_conv', 0), ('up_dil_conv', 1), ('up_dil_conv', 1), ('dil_conv', 2), ('up_dil_conv', 1), ('dil_conv', 3), ('dil_conv', 2), ('dil_conv', 4)], up_concat=range(2, 6), gamma=[0, 0, 0, 0, 0, 0])"
 #python ./train.py --config ../configs/nas_unet/nas_unet_monusac.yml --model nasunet --loss dice_ce --batch_size 14
-#python ./train.py --config ../configs/nas_unet/nas_unet_promise12.yml --model nasunet --loss dice_ce
+python ./train.py --config ../configs/nas_unet/nas_unet_promise12.yml --model nasunet --loss dice_ce
 
 nvidia-smi
 # deviceQuery
