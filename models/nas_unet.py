@@ -157,10 +157,10 @@ class NasUnet(BaseNet):
         for i, block in enumerate(self.blocks):
             for j, cell in enumerate(block):
                 if i == 0 and j == 0:
-                    # stem0: 1x256x256 -> 64x256x256
+                    # stem0: 1x256x256 -> 32x256x256
                     ot = cell(x)
                 elif i == 0 and j == 1:
-                    # stem1: 64x256x256 -> 64x128x128
+                    # stem1: 32x256x256 -> 32x128x128
                     ot = cell(cell_out[-1])
                 elif i == 0:
                     ot = cell(cell_out[-2], cell_out[-1])
@@ -177,7 +177,7 @@ class NasUnet(BaseNet):
                             final_out.append(self.head_block[-1](ot))
                 cell_out.append(ot)
 
-        # gpu_memory_log()
+        gpu_memory_log()
         del cell_out
         if self._supervision:
             return final_out
