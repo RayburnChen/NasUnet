@@ -142,12 +142,13 @@ class NasUnet(BaseNet):
             self.blocks += [up_block]
 
         self.head_block = nn.ModuleList()
-        if self._supervision:
-            for i in range(1, depth):
-                c_last = self._multiplier * num_filters[i][0][2]
-                self.head_block += [Head(c_last, nclass)]
-        else:
-            c_last = self._multiplier * num_filters[-1][0][2]
+        # if self._supervision:
+        #     for i in range(1, depth):
+        #         c_last = self._multiplier * num_filters[i][0][2]
+        #         self.head_block += [Head(c_last, nclass)]
+        # else:
+
+        c_last = self._multiplier * num_filters[-1][0][2]
         self.head_block += [Head(c_last, nclass)]
 
     def forward(self, x):
@@ -173,7 +174,7 @@ class NasUnet(BaseNet):
                         in1 = cell_out[ides[-1] + 1]
                         ot = cell(in0, in1)
                         if j == 0 and self._supervision:
-                            final_out.append(self.head_block[i-1](ot))
+                            final_out.append(self.head_block[-1](ot))
                 cell_out.append(ot)
 
         # gpu_memory_log()
