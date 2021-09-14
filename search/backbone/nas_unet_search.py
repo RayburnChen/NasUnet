@@ -86,12 +86,12 @@ class SearchULikeCNN(nn.Module):
             self.blocks += [up_block]
 
         self.head_block = nn.ModuleList()
-        if self._supervision:
-            for i in range(1, depth):
-                c_last = self._multiplier * num_filters[i][0][2]
-                self.head_block += [Head(c_last, nclass)]
-        else:
-            c_last = self._multiplier * num_filters[-1][0][2]
+        # if self._supervision:
+        #     for i in range(1, depth):
+        #         c_last = self._multiplier * num_filters[i][0][2]
+        #         self.head_block += [Head(c_last, nclass)]
+        # else:
+        c_last = self._multiplier * num_filters[-1][0][2]
         self.head_block += [Head(c_last, nclass)]
 
         if use_softmax_head:
@@ -133,7 +133,7 @@ class SearchULikeCNN(nn.Module):
                     # if i + j < self._depth - 1:
                     #     ot = gamma[i + j][0] * cell_out[ides[-1]] + gamma[i + j][1] * ot
                     if j == 0 and self._supervision:
-                        final_out.append(self.head_block[i-1](ot))
+                        final_out.append(self.head_block[-1](ot))
                 cell_out.append(ot)
 
         del cell_out
