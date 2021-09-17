@@ -12,10 +12,11 @@ class BuildCell(nn.Module):
 
         if cell_type == 'down':
             # Note: the s0 size is twice than s1!
-            self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, ops_order='weight_norm')
+            self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, ops_order='weight_norm_act')
         else:
-            self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, ops_order='weight_norm')
-        self.preprocess1 = ConvOps(c_in1, c, kernel_size=1, ops_order='weight_norm')
+            self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, ops_order='weight_norm_act')
+        # self.preprocess1 = ConvOps(c_in1, c, kernel_size=1, ops_order='weight_norm_act')
+        self.preprocess1 = IdentityOp(c_in1, c_in1)
 
         if cell_type == 'up':
             op_names, idx = zip(*genotype.up)
@@ -24,7 +25,7 @@ class BuildCell(nn.Module):
             op_names, idx = zip(*genotype.down)
             concat = genotype.down_concat
 
-        self.post_process = ConvOps(c * len(concat), c, kernel_size=1, ops_order='weight_norm')
+        self.post_process = ConvOps(c * len(concat), c, kernel_size=1, ops_order='weight_norm_act')
         self.dropout_prob = dropout_prob
         self._compile(c, op_names, idx, concat)
 

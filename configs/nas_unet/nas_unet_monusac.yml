@@ -22,7 +22,7 @@ searching:
     sharing_normal: True
     double_down_channel: False
     deep_supervision: True
-    meta_node_num: 4
+    meta_node_num: 2
     grad_clip: 5
     train_portion: 0.5
     model_optimizer:

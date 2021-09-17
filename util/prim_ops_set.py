@@ -375,7 +375,7 @@ class PoolingOp(BaseOp):
 
 class IdentityOp(BaseOp):
 
-    def __init__(self, in_channels, out_channels, norm_type='gn', use_norm=False, affine=True,
+    def __init__(self, in_channels, out_channels, norm_type=None, use_norm=False, affine=True,
                  act_func=None, dropout_rate=0, ops_order='weight_norm_act'):
         super(IdentityOp, self).__init__(in_channels, out_channels, norm_type, use_norm, affine,
                                          act_func, dropout_rate, ops_order)
