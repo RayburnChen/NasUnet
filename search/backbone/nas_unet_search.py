@@ -7,15 +7,15 @@ from util.genotype import *
 from search.backbone.cell import Cell
 
 
-
 class Head(nn.Module):
 
-    def __init__(self, c_last, nclass):
+    def __init__(self, meta_node_num, c_in0, c_in1, nclass):
         super(Head, self).__init__()
-        self.head = ConvOps(c_last, nclass, kernel_size=1, ops_order='weight')
+        self.up_cell = Cell(meta_node_num, c_in0, c_in1, c_in1, cell_type='up')
+        self.segmentation_head = ConvOps(c_in1, nclass, kernel_size=3, ops_order='weight')
 
-    def forward(self, ot):
-        return self.head(ot)
+    def forward(self, s0, ot, weights_up_norm, weights_up, betas_up):
+        return self.segmentation_head(self.up_cell(s0, ot, weights_up_norm, weights_up, betas_up))
 
 
 class SearchULikeCNN(nn.Module):
@@ -37,22 +37,18 @@ class SearchULikeCNN(nn.Module):
         c_in0, c_in1, c_curr = c, c, c
 
         self.blocks = nn.ModuleList()
-        self.stem0 = ConvOps(in_channels, c_in0, kernel_size=3, ops_order='weight_norm_act')
-        skip_down = ConvOps(c_in0, c_in1, kernel_size=1, stride=2, ops_order='weight_norm')
-        self.stem1 = BasicBlock(c_in0, c_in1, stride=2, dilation=1, downsample=skip_down, previous_dilation=1,
-                                norm_layer=nn.BatchNorm2d)
+        self.stem0 = ConvOps(in_channels, c_in0, kernel_size=7, ops_order='weight_norm_act', affine=False)
+        stem1_pool = PoolingOp(c_in0, c_in1, kernel_size=3, padding=1, pool_type='max', affine=False)
+        stem1_skip = ConvOps(c_in0, c_in1, kernel_size=1, stride=1, ops_order='weight_norm', affine=False)
+        stem1_block = BasicBlock(c_in0, c_in1, stride=1, dilation=1, downsample=stem1_skip, previous_dilation=1, norm_layer=nn.BatchNorm2d)
+        self.stem1 = nn.Sequential(stem1_pool, stem1_block)
 
         num_filters = []
         down_f = []
         down_block = nn.ModuleList()
         for i in range(depth):
             if i == 0:
-                filters = [1, 1, int(c_in0), 'stem0']
-                down_cell = self.stem0
-                down_f.append(filters)
-                down_block += [down_cell]
-            elif i == 1:
-                filters = [1, 1, int(c_in1), 'stem1']
+                filters = [1, 1, int(c_in0), 'stem1']
                 down_cell = self.stem1
                 down_f.append(filters)
                 down_block += [down_cell]
@@ -84,8 +80,9 @@ class SearchULikeCNN(nn.Module):
 
         self.head_block = nn.ModuleList()
 
-        c_last = num_filters[-1][0][2]
-        self.head_block += [Head(c_last, nclass)]
+        c_in0 = 32
+        c_in1 = num_filters[-1][0][2]
+        self.head_block += [Head(meta_node_num, c_in0, c_in1, nclass)]
 
         if use_softmax_head:
             self.softmax = nn.LogSoftmax(dim=1)
@@ -96,11 +93,12 @@ class SearchULikeCNN(nn.Module):
         for i, block in enumerate(self.blocks):
             for j, cell in enumerate(block):
                 if i == 0 and j == 0:
-                    # stem0: 1x256x256 -> 64x256x256
-                    ot = cell(x)
+                    # stem0: 1x256x256 -> 32x256x256
+                    s0 = self.stem0(x)
+                    # stem1: 32x256x256 -> 32x128x128
+                    ot = cell(s0)
                 elif i == 0 and j == 1:
-                    # stem1: 64x256x256 -> 64x128x128
-                    ot = cell(cell_out[-1])
+                    ot = cell(s0, cell_out[-1], weights_down_norm, weights_down, betas_down)
                 elif i == 0:
                     ot = cell(cell_out[-2], cell_out[-1], weights_down_norm, weights_down, betas_down)
                 else:
@@ -126,14 +124,14 @@ class SearchULikeCNN(nn.Module):
                     # if i + j < self._depth - 1:
                     #     ot = gamma[i + j][0] * cell_out[ides[-1]] + gamma[i + j][1] * ot
                     if j == 0 and self._supervision:
-                        final_out.append(self.head_block[-1](ot))
+                        final_out.append(self.head_block[-1](s0, ot, weights_up_norm, weights_up, betas_up))
                 cell_out.append(ot)
 
         del cell_out
         if self._supervision:
             return final_out
         else:
-            return [self.head_block[-1](ot)]
+            return [self.head_block[-1](s0, ot, weights_up_norm, weights_up, betas_up)]
 
 
 class NasUnetSearch(nn.Module):

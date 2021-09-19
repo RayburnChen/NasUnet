@@ -11,8 +11,8 @@ searching:
     init_channels: 32
     depth: 5
     epoch: 1000
-    batch_size: 11
-#    batch_size: 1
+#    batch_size: 12
+    batch_size: 4
     report_freq: 20
     n_workers: 2
     alpha_begin: 15
@@ -21,8 +21,8 @@ searching:
     multi_gpus: True
     sharing_normal: True
     double_down_channel: False
-    deep_supervision: True
-    meta_node_num: 2
+    deep_supervision: False
+    meta_node_num: 3
     grad_clip: 5
     train_portion: 0.5
     model_optimizer:
@@ -54,7 +54,7 @@ training:
     n_workers: 2
     multi_gpus: True
     double_down_channel: False
-    deep_supervision: True
+    deep_supervision: False
     grad_clip: 5
     max_patience: 200
     model_optimizer:

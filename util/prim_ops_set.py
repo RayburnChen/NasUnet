@@ -323,7 +323,7 @@ class CWeightOp(BaseOp):
 class PoolingOp(BaseOp):
 
     def __init__(self, in_channels, out_channels, pool_type, kernel_size=2, stride=2,
-                 norm_type='gn', use_norm=False, affine=True, act_func=None, dropout_rate=0, ops_order='weight'):
+                 norm_type='gn', use_norm=False, affine=True, act_func=None, dropout_rate=0, ops_order='weight', padding=None):
         super(PoolingOp, self).__init__(in_channels, out_channels, norm_type, use_norm, affine, act_func, dropout_rate,
                                         ops_order)
 
@@ -331,7 +331,9 @@ class PoolingOp(BaseOp):
         self.kernel_size = kernel_size
         self.stride = stride
 
-        if self.stride == 1:
+        if padding is not None:
+            padding = padding
+        elif self.stride == 1:
             padding = get_same_padding(self.kernel_size)
         else:
             padding = 0
