@@ -37,7 +37,7 @@ class SearchULikeCNN(nn.Module):
         c_in0, c_in1, c_curr = c, c, c
 
         self.blocks = nn.ModuleList()
-        self.stem0 = ConvOps(in_channels, c_in0, kernel_size=1, ops_order='weight_norm_act')
+        self.stem0 = ConvOps(in_channels, c_in0, kernel_size=3, ops_order='weight_norm_act')
         skip_down = ConvOps(c_in0, c_in1, kernel_size=1, stride=2, ops_order='weight_norm')
         self.stem1 = BasicBlock(c_in0, c_in1, stride=2, dilation=1, downsample=skip_down, previous_dilation=1,
                                 norm_layer=nn.BatchNorm2d)

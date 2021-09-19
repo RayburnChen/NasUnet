@@ -12,11 +12,11 @@ class BuildCell(nn.Module):
 
         if cell_type == 'down':
             # Note: the s0 size is twice than s1!
-            self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, ops_order='weight_norm_act')
+            self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, ops_order='weight_norm')
         else:
-            self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, ops_order='weight_norm_act')
+            self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, ops_order='weight_norm')
         # self.preprocess1 = ConvOps(c_in1, c, kernel_size=1, ops_order='weight_norm_act')
-        self.preprocess1 = IdentityOp(c_in1, c_in1)
+        self.preprocess1 = nn.Identity()
 
         if cell_type == 'up':
             op_names, idx = zip(*genotype.up)
@@ -25,7 +25,7 @@ class BuildCell(nn.Module):
             op_names, idx = zip(*genotype.down)
             concat = genotype.down_concat
 
-        self.post_process = ConvOps(c * len(concat), c, kernel_size=1, ops_order='weight_norm_act')
+        self.post_process = ConvOps(c * len(concat), c, kernel_size=1, ops_order='weight_norm')
         self.dropout_prob = dropout_prob
         self._compile(c, op_names, idx, concat)
 
@@ -63,7 +63,7 @@ class Head(nn.Module):
 
     def __init__(self, c_last, nclass):
         super(Head, self).__init__()
-        self.head = ConvOps(c_last, nclass, kernel_size=1, ops_order='weight')
+        self.head = ConvOps(c_last, nclass, kernel_size=3, ops_order='weight')
 
     def forward(self, ot):
         return self.head(ot)
@@ -88,7 +88,7 @@ class NasUnet(BaseNet):
         c_in0, c_in1, c_curr = c, c, c
 
         self.blocks = nn.ModuleList()
-        self.stem0 = ConvOps(in_channels, c_in0, kernel_size=1, ops_order='weight_norm_act')
+        self.stem0 = ConvOps(in_channels, c_in0, kernel_size=3, ops_order='weight_norm_act')
         skip_down = ConvOps(c_in0, c_in1, kernel_size=1, stride=2, ops_order='weight_norm')
         self.stem1 = BasicBlock(c_in0, c_in1, stride=2, dilation=1, downsample=skip_down, previous_dilation=1,
                                 norm_layer=nn.BatchNorm2d)
