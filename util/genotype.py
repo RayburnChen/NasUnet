@@ -25,7 +25,6 @@ CellPos = [
     'cweight',
     'dil_conv',
     'dep_conv',
-    'shuffle_conv',
     'conv',
 ]
 

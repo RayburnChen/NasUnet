@@ -7,8 +7,8 @@ OPS = {
     'cweight': lambda c, stride, affine, dp: CWeightOp(c, c, affine=affine, dropout_rate=dp),
     'dil_conv': lambda c, stride, affine, dp: ConvOps(c, c, affine=affine, dilation=2, dropout_rate=dp),
     'dep_conv': lambda c, stride, affine, dp: ConvOps(c, c, affine=affine, use_depthwise=True, dropout_rate=dp),
-    'shuffle_conv': lambda c, stride, affine, dp: ConvOps(c, c, affine=affine),
-    'conv': lambda c, stride, affine, dp: ConvOps(c, c, affine=affine, has_shuffle=True),
+    'shuffle_conv': lambda c, stride, affine, dp: ConvOps(c, c, affine=affine, has_shuffle=True),
+    'conv': lambda c, stride, affine, dp: ConvOps(c, c, affine=affine, has_shuffle=False),
     'avg_pool': lambda c, stride, affine, dp: PoolingOp(c, c, affine=affine, pool_type='avg'),
     'max_pool': lambda c, stride, affine, dp: PoolingOp(c, c, affine=affine, pool_type='max'),
 
