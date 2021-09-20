@@ -14,8 +14,8 @@ class Head(nn.Module):
         self.up_cell = Cell(meta_node_num, c_in0, c_in1, c_in1, cell_type='up')
         self.segmentation_head = ConvOps(c_in1, nclass, kernel_size=3, ops_order='weight')
 
-    def forward(self, s0, ot, weights_up_norm, weights_up, betas_up):
-        return self.segmentation_head(self.up_cell(s0, ot, weights_up_norm, weights_up, betas_up))
+    def forward(self, s0, ot, weights_up_norm, weights_up, betas_up, post):
+        return self.segmentation_head(self.up_cell(s0, ot, weights_up_norm, weights_up, betas_up, post))
 
 
 class SearchULikeCNN(nn.Module):
@@ -86,7 +86,7 @@ class SearchULikeCNN(nn.Module):
         if use_softmax_head:
             self.softmax = nn.LogSoftmax(dim=1)
 
-    def forward(self, x, weights_down_norm, weights_up_norm, weights_down, weights_up, betas_down, betas_up, gamma):
+    def forward(self, x, weights_down_norm, weights_up_norm, weights_down, weights_up, betas_down, betas_up, gamma, post):
         cell_out = []
         final_out = []
         for i, block in enumerate(self.blocks):
@@ -97,9 +97,9 @@ class SearchULikeCNN(nn.Module):
                     # stem1: 32x256x256 -> 32x128x128
                     ot = cell(s0)
                 elif i == 0 and j == 1:
-                    ot = cell(s0, cell_out[-1], weights_down_norm, weights_down, betas_down)
+                    ot = cell(s0, cell_out[-1], weights_down_norm, weights_down, betas_down, post)
                 elif i == 0:
-                    ot = cell(cell_out[-2], cell_out[-1], weights_down_norm, weights_down, betas_down)
+                    ot = cell(cell_out[-2], cell_out[-1], weights_down_norm, weights_down, betas_down, post)
                 else:
                     ides = [sum(range(self._depth, self._depth - k, -1)) + j for k in range(i)]
                     # in0 = torch.cat([cell_out[idx] for idx in ides], dim=1)
@@ -119,18 +119,18 @@ class SearchULikeCNN(nn.Module):
                             [in0] + [cell_out[ides[k]] * gamma[idx][0] + cell_out[ides[k + 1]] * gamma[idx][1] for
                                      k, idx in enumerate(gamma_ides)], dim=1)
                     in1 = cell_out[ides[-1] + 1]
-                    ot = cell(in0, in1, weights_up_norm, weights_up, betas_up)
+                    ot = cell(in0, in1, weights_up_norm, weights_up, betas_up, post)
                     # if i + j < self._depth - 1:
                     #     ot = gamma[i + j][0] * cell_out[ides[-1]] + gamma[i + j][1] * ot
                     if j == 0 and self._supervision:
-                        final_out.append(self.head_block[-1](s0, ot, weights_up_norm, weights_up, betas_up))
+                        final_out.append(self.head_block[-1](s0, ot, weights_up_norm, weights_up, betas_up, post))
                 cell_out.append(ot)
 
         del cell_out
         if self._supervision:
             return final_out
         else:
-            return [self.head_block[-1](s0, ot, weights_up_norm, weights_up, betas_up)]
+            return [self.head_block[-1](s0, ot, weights_up_norm, weights_up, betas_up, post)]
 
 
 class NasUnetSearch(nn.Module):
@@ -159,6 +159,7 @@ class NasUnetSearch(nn.Module):
         normal_num_ops = len(CellPos)
         down_num_ops = len(CellLinkDownPos)
         up_num_ops = len(CellLinkUpPos)
+        post_num_ops = len(PostPos)
 
         k = sum(1 for i in range(self._meta_node_num) for n in range(2 + i))  # total number of input node
         self.alphas_down = nn.Parameter(1e-3 * torch.randn(k, down_num_ops))
@@ -171,6 +172,7 @@ class NasUnetSearch(nn.Module):
         self.betas_up = nn.Parameter(1e-3 * torch.randn(k))
 
         self.gamma = nn.Parameter(1e-3 * torch.randn(sum(range(depth - 1)), 2))
+        self.post = nn.Parameter(1e-3 * torch.randn(post_num_ops))
 
         self._arch_parameters = [
             self.alphas_down,
@@ -179,7 +181,8 @@ class NasUnetSearch(nn.Module):
             self.alphas_normal_up,
             self.betas_down,
             self.betas_up,
-            self.gamma
+            self.gamma,
+            self.post,
         ]
 
     def load_params(self, alphas_dict, betas_dict):
@@ -225,6 +228,7 @@ class NasUnetSearch(nn.Module):
         alphas_down = F.softmax(self.alphas_down, dim=-1).detach().cpu()
         alphas_normal_up = F.softmax(self.alphas_normal_up, dim=-1).detach().cpu()
         alphas_up = F.softmax(self.alphas_up, dim=-1).detach().cpu()
+
         betas_down = []
         betas_up = []
         for i in range(self._meta_node_num):
@@ -246,11 +250,11 @@ class NasUnetSearch(nn.Module):
         gene_up = geno_parser.parse(alphas_normal_up.numpy(), alphas_up.numpy(), cell_type='up')
         concat = range(2, self._meta_node_num + 2)
         gamma = F.softmax(self.gamma, dim=-1).detach().cpu().argmax(1).tolist()
-        gamma[0] = 1
+        post = CellPos[F.softmax(self.post, dim=-1).detach().cpu().argmax(0)]
         geno_type = Genotype(
             down=gene_down, down_concat=concat,
             up=gene_up, up_concat=concat,
-            gamma=gamma
+            gamma=gamma, post=post,
         )
         return geno_type
 
@@ -269,9 +273,10 @@ class NasUnetSearch(nn.Module):
         betas_down = torch.cat(betas_down, dim=0)
         betas_up = torch.cat(betas_up, dim=0)
         gamma = F.softmax(self.gamma, dim=-1)
+        post = F.softmax(self.post, dim=-1)
 
         if len(self.device_ids) == 1:
-            return self.net(x, alphas_down_norm, alphas_up_norm, alphas_down, alphas_up, betas_down, betas_up, gamma)
+            return self.net(x, alphas_down_norm, alphas_up_norm, alphas_down, alphas_up, betas_down, betas_up, gamma, post)
 
         # scatter x
         xs = nn.parallel.scatter(x, self.device_ids)

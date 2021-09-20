@@ -2,27 +2,40 @@ from enum import Enum
 
 from torch.functional import F
 
-from util.genotype import CellLinkDownPos, CellLinkUpPos, CellPos
+from util.genotype import CellLinkDownPos, CellLinkUpPos, CellPos, PostPos
 from util.prim_ops_set import *
 
 
 class MixedOp(nn.Module):
 
-    def __init__(self, c, stride, op_type):
+    def __init__(self, c_in, c_ot, stride, op_type, partial=True):
         super(MixedOp, self).__init__()
         self._ops = nn.ModuleList()
         self._op_type = op_type
         self.k = 4
+        self.partial = partial  # gate for partial connect
         self.mp = nn.MaxPool2d(2, 2)
 
         for pri in self._op_type.value:
-            op = OPS[pri](c // self.k, stride, affine=False, dp=0)
+            if self.partial:
+                partial_c_in = c_in // self.k
+                op = OPS[pri](partial_c_in, c_ot - c_in + partial_c_in, stride, affine=False, dp=0)
+            else:
+                op = OPS[pri](c_in, c_ot, stride, affine=False, dp=0)
             self._ops.append(op)
 
     def forward(self, x, weights_norm, weights_chg):
         # weights: i * 1 where i is the number of normal primitive operations
         # weights: j * 1 where j is the number of up primitive operations
         # weights: k * 1 where k is the number of down primitive operations
+
+        if not self.partial:
+            if OpType.UP == self._op_type or OpType.DOWN == self._op_type:
+                return sum(w * op(x) for w, op in zip(weights_chg, self._ops))
+            elif OpType.NORM == self._op_type or OpType.POST == self._op_type:
+                return sum(w * op(x) for w, op in zip(weights_norm, self._ops))
+            else:
+                raise NotImplementedError()
 
         # channel proportion k
         dim_2 = x.shape[1]
@@ -39,7 +52,7 @@ class MixedOp(nn.Module):
                 temp2 = self.mp(xtemp2)
             else:
                 temp2 = F.interpolate(xtemp2, scale_factor=2, mode='nearest')
-        elif OpType.NORM == self._op_type:
+        elif OpType.NORM == self._op_type or OpType.POST == self._op_type:
             temp1 = sum(w * op(xtemp1) for w, op in zip(weights_norm, self._ops))
             temp2 = xtemp2
         else:
@@ -70,7 +83,7 @@ class Cell(nn.Module):
         # self.preprocess1 = ConvOps(c_in0, c, kernel_size=1, affine=False, ops_order='weight_norm_act')
         self.preprocess1 = nn.Identity()
 
-        self.post_process = ConvOps(c * self._meta_node_num, c, kernel_size=3, ops_order='weight_norm_act')
+        self.post_process = MixedOp(c * self._meta_node_num, c, stride=1, op_type=OpType.POST, partial=False)
 
         self._ops = nn.ModuleList()
 
@@ -86,15 +99,15 @@ class Cell(nn.Module):
                 # up cell:   |*|_|*|*|_|*|_|*|*| where _ indicate up operation
                 if idx_up_or_down_start <= j < 2:
                     if self._cell_type == 'up':
-                        op = MixedOp(c, stride=2, op_type=OpType.UP)
+                        op = MixedOp(c, c, stride=2, op_type=OpType.UP)
                     else:
-                        op = MixedOp(c, stride=2, op_type=OpType.DOWN)
+                        op = MixedOp(c, c, stride=2, op_type=OpType.DOWN)
                 else:
-                    op = MixedOp(c, stride=1, op_type=OpType.NORM)
+                    op = MixedOp(c, c, stride=1, op_type=OpType.NORM)
 
                 self._ops.append(op)
 
-    def forward(self, s0, s1, weights_norm, weights_chg, betas):
+    def forward(self, s0, s1, weights_norm, weights_chg, betas, post):
         # weight1: the normal operations weights with sharing
         # weight2: the down or up operations weight, respectively
 
@@ -119,13 +132,14 @@ class Cell(nn.Module):
             offset += len(states)
             states.append(s)
 
-        return self.post_process(torch.cat(states[-self._multiplier:], dim=1))
+        return self.post_process(torch.cat(states[-self._multiplier:], dim=1), post, post)
 
 
 class OpType(Enum):
     UP = CellLinkUpPos
     DOWN = CellLinkDownPos
     NORM = CellPos
+    POST = PostPos
 
 
 def channel_shuffle(x, groups):
