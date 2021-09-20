@@ -79,7 +79,7 @@ class SearchULikeCNN(nn.Module):
 
         self.head_block = nn.ModuleList()
 
-        c_in0 = 32
+        c_in0 = c
         c_in1 = num_filters[-1][0][2]
         self.head_block += [Head(meta_node_num, c_in0, c_in1, nclass)]
 

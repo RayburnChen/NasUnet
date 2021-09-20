@@ -51,10 +51,10 @@ class MixedOp(nn.Module):
 
 class Cell(nn.Module):
 
-    def __init__(self, meta_node_num, c_prev_prev, c_prev, c, cell_type):
+    def __init__(self, meta_node_num, c_in0, c_in1, c, cell_type):
         super(Cell, self).__init__()
-        self.c_prev_prev = c_prev_prev
-        self.c_prev = c_prev
+        self.c_in0 = c_in0
+        self.c_in1 = c_in1
         self.c = c
         self._meta_node_num = meta_node_num
         self._multiplier = meta_node_num
@@ -63,11 +63,11 @@ class Cell(nn.Module):
 
         if self._cell_type == 'down':
             # Note: the s0 size is twice than s1!
-            self.preprocess0 = ConvOps(c_prev_prev, c, kernel_size=1, stride=2, affine=False,
+            self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, affine=False,
                                        ops_order='weight_norm')
         else:
-            self.preprocess0 = ConvOps(c_prev_prev, c, kernel_size=1, affine=False, ops_order='weight_norm')
-        # self.preprocess1 = ConvOps(c_prev, c, kernel_size=1, affine=False, ops_order='weight_norm_act')
+            self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, affine=False, ops_order='weight_norm')
+        # self.preprocess1 = ConvOps(c_in0, c, kernel_size=1, affine=False, ops_order='weight_norm_act')
         self.preprocess1 = nn.Identity()
 
         self.post_process = ConvOps(c * self._meta_node_num, c, kernel_size=3, ops_order='weight_norm_act')
