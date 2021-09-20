@@ -250,7 +250,7 @@ class NasUnetSearch(nn.Module):
         gene_up = geno_parser.parse(alphas_normal_up.numpy(), alphas_up.numpy(), cell_type='up')
         concat = range(2, self._meta_node_num + 2)
         gamma = F.softmax(self.gamma, dim=-1).detach().cpu().argmax(1).tolist()
-        post = CellPos[F.softmax(self.post, dim=-1).detach().cpu().argmax(0)]
+        post = PostPos[F.softmax(self.post, dim=-1).detach().cpu().argmax(0)]
         geno_type = Genotype(
             down=gene_down, down_concat=concat,
             up=gene_up, up_concat=concat,
