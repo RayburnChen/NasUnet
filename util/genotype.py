@@ -9,12 +9,12 @@ CellLinkDownPos = [
     'down_cweight',
     'down_dil_conv',
     'down_dep_conv',
-    'down_conv'
+    'down_conv',
 ]
 
 CellLinkUpPos = [
     'up_cweight',
-    'up_dil_conv'
+    'up_dil_conv',
     'up_dep_conv',
     'up_conv',
 ]
