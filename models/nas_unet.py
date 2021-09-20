@@ -25,7 +25,7 @@ class BuildCell(nn.Module):
             op_names, idx = zip(*genotype.down)
             concat = genotype.down_concat
 
-        self.post_process = ConvOps(c * len(concat), c, kernel_size=1, ops_order='weight_norm')
+        self.post_process = ConvOps(c * len(concat), c, kernel_size=3, ops_order='weight_norm_act')
         self.dropout_prob = dropout_prob
         self._compile(c, op_names, idx, concat)
 
@@ -91,8 +91,7 @@ class NasUnet(BaseNet):
         self.blocks = nn.ModuleList()
         self.stem0 = ConvOps(in_channels, c_in0, kernel_size=7, ops_order='weight_norm_act')
         stem1_pool = PoolingOp(c_in0, c_in1, kernel_size=3, padding=1, pool_type='max')
-        stem1_skip = ConvOps(c_in0, c_in1, kernel_size=1, stride=1, ops_order='weight_norm')
-        stem1_block = BasicBlock(c_in0, c_in1, stride=1, dilation=1, downsample=stem1_skip, previous_dilation=1, norm_layer=nn.BatchNorm2d)
+        stem1_block = BasicBlock(c_in0, c_in1, stride=1, dilation=1, previous_dilation=1, norm_layer=nn.BatchNorm2d)
         self.stem1 = nn.Sequential(stem1_pool, stem1_block)
 
         num_filters = []
@@ -169,7 +168,6 @@ class NasUnet(BaseNet):
                             final_out.append(self.head_block[-1](s0, ot))
                 cell_out.append(ot)
 
-        # gpu_memory_log()
         del cell_out
         if self._supervision:
             return final_out

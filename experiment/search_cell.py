@@ -16,7 +16,7 @@ import torchvision.transforms as transform
 sys.path.append('..')
 from util.loss.loss import SegmentationLosses, MultiSegmentationLosses
 from util.datasets import get_dataset, datasets
-from util.utils import get_logger, save_checkpoint, gpu_memory
+from util.utils import get_logger, save_checkpoint, gpu_memory, complexity_info
 from util.utils import calc_time
 from util.utils import get_gpus_memory_info, calc_parameters_count
 from util.optimizers import get_optimizer
@@ -251,7 +251,7 @@ class SearchNetwork(object):
         self.model.train()
         tbar = tqdm(self.train_queue)
         for step, (input, target) in enumerate(tbar):
-
+            # self.logger.info('GPU memory total:{}, reserved:{}, allocated:{}, waiting:{}'.format(*gpu_memory()))
             input = input.to(self.device)
             target = target.to(self.device)
 

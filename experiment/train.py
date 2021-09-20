@@ -16,7 +16,7 @@ from util.gpu_memory_log import gpu_memory_log
 sys.path.append('..')
 from util.loss.loss import SegmentationLosses, MultiSegmentationLosses
 from util.datasets import get_dataset
-from util.utils import get_logger, save_checkpoint, calc_time, store_images, gpu_memory
+from util.utils import get_logger, save_checkpoint, calc_time, store_images, gpu_memory, complexity_info
 from util.utils import weights_init
 from util.utils import get_gpus_memory_info, calc_parameters_count
 from util.schedulers import get_scheduler
@@ -170,6 +170,7 @@ class Network(object):
 
         self.model_optimizer = optimizer_cls(self.model.parameters(), **optimizer_params)
         self.logger.info("Using model optimizer {}".format(self.model_optimizer))
+        # self.logger.info('Computational complexity:{}, Number of parameters:{}'.format(*complexity_info(self.model, (1, 256, 256))))
 
     def _check_resume(self):
         self.dur_time = 0
@@ -291,7 +292,7 @@ class Network(object):
         self.model.train()
         tbar = tqdm(self.train_queue)
         for step, (input, target) in enumerate(tbar):
-
+            # self.logger.info('GPU memory total:{}, reserved:{}, allocated:{}, waiting:{}'.format(*gpu_memory()))
             self.model_optimizer.zero_grad()
 
             input = input.cuda(self.device)

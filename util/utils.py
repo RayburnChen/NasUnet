@@ -14,6 +14,7 @@ from torch.nn.parallel._functions import Broadcast
 from torchvision.utils import make_grid
 
 from util.encoder_colors import get_mask_pallete
+from ptflops import get_model_complexity_info
 
 
 def get_same_padding(kernel_size):
@@ -308,3 +309,10 @@ def gpu_memory(n=0):
     f = r - a  # free inside reserved
     res = t, r, a, f
     return [str(round(x / 1024 / 1024 / 1024, 2)) + ' GB' for x in res]
+
+
+def complexity_info(model, input_size):
+    macs, params = get_model_complexity_info(model, input_size, as_strings=True, print_per_layer_stat=False,
+                                             verbose=False)
+    return macs, params
+
