@@ -37,8 +37,8 @@ class SearchULikeCNN(nn.Module):
         c_in0, c_in1, c_curr = c, c, c
 
         self.blocks = nn.ModuleList()
-        self.stem0 = ConvOps(in_channels, c_in0, kernel_size=7, ops_order='weight_norm_act', affine=False)
-        stem1_pool = PoolingOp(c_in0, c_in0, kernel_size=3, padding=1, pool_type='max', affine=False)
+        self.stem0 = ConvOps(in_channels, c_in0, kernel_size=7, ops_order='weight_norm_act')
+        stem1_pool = PoolingOp(c_in0, c_in0, kernel_size=3, padding=1, pool_type='max')
         stem1_block = BasicBlock(c_in0, c_in1, stride=1, dilation=1, previous_dilation=1, norm_layer=nn.BatchNorm2d)
         self.stem1 = nn.Sequential(stem1_pool, stem1_block)
 
