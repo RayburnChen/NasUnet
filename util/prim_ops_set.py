@@ -2,30 +2,25 @@ import torch.nn as nn
 from util.utils import *
 
 OPS = {
-    'none': lambda c_in, c_ot, stride, affine, dp: ZeroOp(c_in, c_ot, stride=stride),
-    'identity': lambda c_in, c_ot, stride, affine, dp: IdentityOp(c_in, c_ot, affine=affine),
-    'cweight': lambda c_in, c_ot, stride, affine, dp: CWeightOp(c_in, c_ot, affine=affine, dropout_rate=dp),
-    'dil_conv': lambda c_in, c_ot, stride, affine, dp: ConvOps(c_in, c_ot, affine=affine, dilation=2, dropout_rate=dp),
-    'dep_conv': lambda c_in, c_ot, stride, affine, dp: ConvOps(c_in, c_ot, affine=affine, use_depthwise=True, dropout_rate=dp),
-    'shuffle_conv': lambda c_in, c_ot, stride, affine, dp: ConvOps(c_in, c_ot, affine=affine, has_shuffle=True),
-    'conv': lambda c_in, c_ot, stride, affine, dp: ConvOps(c_in, c_ot, affine=affine, has_shuffle=False),
-    'avg_pool': lambda c_in, c_ot, stride, affine, dp: PoolingOp(c_in, c_ot, affine=affine, pool_type='avg'),
-    'max_pool': lambda c_in, c_ot, stride, affine, dp: PoolingOp(c_in, c_ot, affine=affine, pool_type='max'),
+    'none': lambda c_in, c_ot, stride, dp: ZeroOp(c_in, c_ot, stride=stride),
+    'identity': lambda c_in, c_ot, stride, dp: IdentityOp(c_in, c_ot),
+    'cweight': lambda c_in, c_ot, stride, dp: CWeightOp(c_in, c_ot, dropout_rate=dp),
+    'dil_conv': lambda c_in, c_ot, stride, dp: ConvOps(c_in, c_ot, dilation=2, dropout_rate=dp),
+    'dep_conv': lambda c_in, c_ot, stride, dp: ConvOps(c_in, c_ot, use_depthwise=True, dropout_rate=dp),
+    'shuffle_conv': lambda c_in, c_ot, stride, dp: ConvOps(c_in, c_ot, has_shuffle=True),
+    'conv': lambda c_in, c_ot, stride, dp: ConvOps(c_in, c_ot, has_shuffle=False),
+    'avg_pool': lambda c_in, c_ot, stride, dp: PoolingOp(c_in, c_ot, pool_type='avg'),
+    'max_pool': lambda c_in, c_ot, stride, dp: PoolingOp(c_in, c_ot, pool_type='max'),
 
-    'down_cweight': lambda c_in, c_ot, stride, affine, dp: CWeightOp(c_in, c_ot, stride=2, affine=affine, dropout_rate=dp),
-    'down_dep_conv': lambda c_in, c_ot, stride, affine, dp: ConvOps(c_in, c_ot, stride=2, affine=affine, use_depthwise=True,
-                                                           dropout_rate=dp),
-    'down_conv': lambda c_in, c_ot, stride, affine, dp: ConvOps(c_in, c_ot, stride=2, affine=affine, dropout_rate=dp),
-    'down_dil_conv': lambda c_in, c_ot, stride, affine, dp: ConvOps(c_in, c_ot, stride=2, affine=affine, dilation=2, dropout_rate=dp),
+    'down_cweight': lambda c_in, c_ot, stride, dp: CWeightOp(c_in, c_ot, stride=2, dropout_rate=dp),
+    'down_dep_conv': lambda c_in, c_ot, stride, dp: ConvOps(c_in, c_ot, stride=2, use_depthwise=True, dropout_rate=dp),
+    'down_conv': lambda c_in, c_ot, stride, dp: ConvOps(c_in, c_ot, stride=2, dropout_rate=dp),
+    'down_dil_conv': lambda c_in, c_ot, stride, dp: ConvOps(c_in, c_ot, stride=2, dilation=2, dropout_rate=dp),
 
-    'up_cweight': lambda c_in, c_ot, stride, affine, dp: CWeightOp(c_in, c_ot, stride=2, affine=affine, use_transpose=True,
-                                                          dropout_rate=dp, output_padding=1),
-    'up_dep_conv': lambda c_in, c_ot, stride, affine, dp: ConvOps(c_in, c_ot, stride=2, affine=affine, use_depthwise=True,
-                                                         use_transpose=True, dropout_rate=dp, output_padding=1),
-    'up_conv': lambda c_in, c_ot, stride, affine, dp: ConvOps(c_in, c_ot, stride=2, affine=affine, use_transpose=True, dropout_rate=dp,
-                                                     output_padding=1),
-    'up_dil_conv': lambda c_in, c_ot, stride, affine, dp: ConvOps(c_in, c_ot, stride=2, affine=affine, dilation=3, use_transpose=True,
-                                                         dropout_rate=dp, output_padding=1),
+    'up_cweight': lambda c_in, c_ot, stride, dp: CWeightOp(c_in, c_ot, stride=2, use_transpose=True, output_padding=1, dropout_rate=dp),
+    'up_dep_conv': lambda c_in, c_ot, stride, dp: ConvOps(c_in, c_ot, stride=2, use_transpose=True, output_padding=1, use_depthwise=True, dropout_rate=dp),
+    'up_conv': lambda c_in, c_ot, stride, dp: ConvOps(c_in, c_ot, stride=2, use_transpose=True, output_padding=1, dropout_rate=dp),
+    'up_dil_conv': lambda c_in, c_ot, stride, dp: ConvOps(c_in, c_ot, stride=2, use_transpose=True, output_padding=1, dilation=3, dropout_rate=dp),
 
 }
 
@@ -62,19 +57,22 @@ class BaseOp(AbstractOp):
         self.dropout_rate = dropout_rate
         self.ops_order = ops_order
         self.norm_type = norm_type
+        self.c = 16
 
         # batch norm, group norm, instance norm, layer norm
         if self.use_norm:
             # Ref: <Group Normalization> https://arxiv.org/abs/1803.08494
             # 16 channels for one group is best
             if self.norm_before_weight:
-                group = 1 if in_channels % 16 != 0 else in_channels // 16
+                group = 1 if (in_channels % self.c > 0) else 0
+                group += in_channels // self.c
                 if norm_type == 'gn':
                     self.norm = nn.GroupNorm(group, in_channels, affine=affine)
                 else:
                     self.norm = nn.BatchNorm2d(in_channels, affine=affine)
             else:
-                group = 1 if out_channels % 16 != 0 else out_channels // 16
+                group = 1 if (out_channels % self.c > 0) else 0
+                group += out_channels // self.c
                 if norm_type == 'gn':
                     self.norm = nn.GroupNorm(group, out_channels, affine=affine)
                 else:
@@ -299,7 +297,8 @@ class CWeightOp(BaseOp):
             else:
                 self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size,
                                       stride=stride, padding=padding, bias=False)
-            group = 1 if out_channels % 16 != 0 else out_channels // 16
+            group = 1 if (out_channels % 16 > 0) else 0
+            group += out_channels // 16
             self.norm = nn.GroupNorm(group, out_channels, affine=affine)
 
     @property
@@ -323,7 +322,8 @@ class CWeightOp(BaseOp):
 class PoolingOp(BaseOp):
 
     def __init__(self, in_channels, out_channels, pool_type, kernel_size=2, stride=2,
-                 norm_type='gn', use_norm=False, affine=True, act_func=None, dropout_rate=0, ops_order='weight', padding=None):
+                 norm_type='gn', use_norm=False, affine=True, act_func=None, dropout_rate=0, ops_order='weight',
+                 padding=None):
         super(PoolingOp, self).__init__(in_channels, out_channels, norm_type, use_norm, affine, act_func, dropout_rate,
                                         ops_order)
 
@@ -378,7 +378,7 @@ class PoolingOp(BaseOp):
 class IdentityOp(BaseOp):
 
     def __init__(self, in_channels, out_channels, norm_type=None, use_norm=False, affine=True,
-                 act_func=None, dropout_rate=0, ops_order='weight_norm_act'):
+                 act_func=None, dropout_rate=0, ops_order='weight'):
         super(IdentityOp, self).__init__(in_channels, out_channels, norm_type, use_norm, affine,
                                          act_func, dropout_rate, ops_order)
 

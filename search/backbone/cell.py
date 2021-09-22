@@ -16,7 +16,7 @@ class MixedOp(nn.Module):
         self.mp = nn.MaxPool2d(2, 2)
 
         for pri in self._op_type.value:
-            op = OPS[pri](c // self.k, c // self.k, stride, affine=True, dp=0)
+            op = OPS[pri](c // self.k, c // self.k, stride, dp=0)
             self._ops.append(op)
 
     def forward(self, x, weights_norm, weights_chg):

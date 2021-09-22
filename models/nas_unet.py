@@ -38,7 +38,7 @@ class BuildCell(nn.Module):
 
         self._ops = nn.ModuleList()
         for name, index in zip(op_names, idx):
-            op = OPS[name](c, c, None, affine=True, dp=self.dropout_prob)
+            op = OPS[name](c, c, None, dp=self.dropout_prob)
             # op = OPS[name](c_in, c_ot, None, affine=True, dp=self.dropout_prob)
             self._ops += [op]
         self._indices = idx
