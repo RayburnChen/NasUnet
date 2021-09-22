@@ -88,49 +88,34 @@ class SearchULikeCNN(nn.Module):
 
     def forward(self, x, weights_down_norm, weights_up_norm, weights_down, weights_up, betas_down, betas_up, gamma):
         cell_out = []
-        final_out = []
-        for i, block in enumerate(self.blocks):
-            for j, cell in enumerate(block):
-                if i == 0 and j == 0:
-                    # stem0: 1x256x256 -> 32x256x256
-                    s0 = self.stem0(x)
-                    # stem1: 32x256x256 -> 32x128x128
-                    ot = cell(s0)
-                elif i == 0 and j == 1:
-                    ot = cell(s0, cell_out[-1], weights_down_norm, weights_down, betas_down)
-                elif i == 0:
-                    ot = cell(cell_out[-2], cell_out[-1], weights_down_norm, weights_down, betas_down)
-                else:
-                    ides = [sum(range(self._depth, self._depth - k, -1)) + j for k in range(i)]
-                    # in0 = torch.cat([cell_out[idx] for idx in ides], dim=1)
-                    # gamma_used = gamma[j:i + j, :]
-                    # assert len(ides) == len(gamma_used), 'gamma size not match'
-                    # in0 = torch.cat(
-                    #     [cell_out[ides[0]] * gam[0] + cell_out[idx] * gam[1] for idx, gam in zip(ides, gamma_used)],
-                    #     dim=1)
-                    # in0 = torch.cat(
-                    #     [cell_out[ides[i - 1 if i > 0 else 0]] * gamma_used[i][0] + cell_out[idx] * gamma_used[i][1] for
-                    #      i, idx in enumerate(ides)], dim=1)
-                    in0 = cell_out[ides[0]]
-
-                    if i > 1:
-                        gamma_ides = [sum(range(self._depth - 2, self._depth - 2 - k, -1)) + j for k in range(i - 1)]
-                        in0 = torch.cat(
-                            [in0] + [cell_out[ides[k]] * gamma[idx][0] + cell_out[ides[k + 1]] * gamma[idx][1] for
-                                     k, idx in enumerate(gamma_ides)], dim=1)
-                    in1 = cell_out[ides[-1] + 1]
-                    ot = cell(in0, in1, weights_up_norm, weights_up, betas_up)
-                    # if i + j < self._depth - 1:
-                    #     ot = gamma[i + j][0] * cell_out[ides[-1]] + gamma[i + j][1] * ot
-                    if j == 0 and self._supervision:
-                        final_out.append(self.head_block[-1](s0, ot, weights_up_norm, weights_up, betas_up))
+        for j, cell in enumerate(self.blocks[0]):
+            if j == 0:
+                # stem0: 1x256x256 -> 32x256x256
+                s0 = self.stem0(x)
+                # stem1: 32x256x256 -> 32x128x128
+                ot = cell(s0)
+                cell_out.append(ot)
+            elif j == 1:
+                ot = cell(s0, cell_out[-1], weights_down_norm, weights_down, betas_down)
+                cell_out.append(ot)
+            else:
+                ot = cell(cell_out[-2], cell_out[-1], weights_down_norm, weights_down, betas_down)
                 cell_out.append(ot)
 
-        del cell_out
+        for j in reversed(range(self._depth - 1)):
+            for i in range(1, self._depth - j):
+                ides = range(j, i + j)
+                gamma_ides = [sum(range(k + j)) + j for k in range(1, i)]
+                in0 = torch.cat([cell_out[ides[0]]] + [cell_out[ides[k]] * gamma[idx][0] + cell_out[ides[k + 1]] * gamma[idx][1] for k, idx in enumerate(gamma_ides)], dim=1)
+                in1 = cell_out[i + j]
+                cell = self.blocks[i][j]
+                ot = cell(in0, in1, weights_up_norm, weights_up, betas_up)
+                cell_out[i + j] = ot
+
         if self._supervision:
-            return final_out
+            return [self.head_block[-1](s0, ot, weights_up_norm, weights_up, betas_up) for ot in cell_out]
         else:
-            return [self.head_block[-1](s0, ot, weights_up_norm, weights_up, betas_up)]
+            return [self.head_block[-1](s0, cell_out[-1], weights_up_norm, weights_up, betas_up)]
 
 
 class NasUnetSearch(nn.Module):

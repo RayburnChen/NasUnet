@@ -15,6 +15,7 @@ from torchvision.utils import make_grid
 
 from util.encoder_colors import get_mask_pallete
 from ptflops import get_model_complexity_info
+from torchstat import stat
 
 
 def get_same_padding(kernel_size):
@@ -313,6 +314,9 @@ def gpu_memory(n=0):
 
 def complexity_info(model, input_size):
     macs, params = get_model_complexity_info(model, input_size, as_strings=True, print_per_layer_stat=False,
-                                             verbose=False)
+                                             verbose=True)
     return macs, params
 
+
+def stat_info(model, input_size):
+    stat(model, input_size)

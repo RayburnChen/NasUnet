@@ -119,8 +119,8 @@ class NasUnet(BaseNet):
             up_f = []
             up_block = nn.ModuleList()
             for j in range(self._depth - i):
-                gamma_ides = sum(range(self._depth - 2, self._depth - i - 1, -1)) + j
-                if i + j < self._depth - 1 and self.gamma[gamma_ides] == 0:
+                gamma_idx = sum(range(i + j)) + j
+                if i + j < self._depth - 1 and self.gamma[gamma_idx] == 0:
                     filters = [0, 0, 0, 'None']
                     up_cell = None
                 else:
@@ -160,8 +160,8 @@ class NasUnet(BaseNet):
 
         for j in reversed(range(self._depth - 1)):
             for i in range(1, self._depth - j):
-                gamma_ides = sum(range(self._depth - 2, self._depth - i - 1, -1)) + j
-                if i + j < self._depth - 1 and self.gamma[gamma_ides] == 0:
+                gamma_idx = sum(range(i + j)) + j
+                if i + j < self._depth - 1 and self.gamma[gamma_idx] == 0:
                     ot = None
                     cell_out[i + j] = ot
                 else:

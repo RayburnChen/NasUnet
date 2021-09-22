@@ -16,7 +16,7 @@ from util.gpu_memory_log import gpu_memory_log
 sys.path.append('..')
 from util.loss.loss import SegmentationLosses, MultiSegmentationLosses
 from util.datasets import get_dataset
-from util.utils import get_logger, save_checkpoint, calc_time, store_images, gpu_memory, complexity_info
+from util.utils import get_logger, save_checkpoint, calc_time, store_images, gpu_memory, complexity_info, stat_info
 from util.utils import weights_init
 from util.utils import get_gpus_memory_info, calc_parameters_count
 from util.schedulers import get_scheduler
@@ -160,6 +160,8 @@ class Network(object):
         else:
             self.logger.info('gpu device = %d' % self.device_id)
             torch.cuda.set_device(self.device_id)
+
+        # stat_info(model, (1, 256, 256))
         self.model = model.to(self.device)
         self.logger.info('param size = %fMB', calc_parameters_count(model))
 
@@ -300,7 +302,7 @@ class Network(object):
 
             predicts = self.model(input)
 
-            self.logger.info('GPU memory total:{}, reserved:{}, allocated:{}, waiting:{}'.format(*gpu_memory()))
+            # self.logger.info('GPU memory total:{}, reserved:{}, allocated:{}, waiting:{}'.format(*gpu_memory()))
 
             train_loss = self.criterion(predicts, target)
 
