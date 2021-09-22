@@ -140,37 +140,39 @@ class NasUnet(BaseNet):
 
         c_in0 = c
         c_in1 = num_filters[-1][0][2]
-        self.head_block += [Head(genotype, c_in0, c_in1, nclass)]
+        self.head_block.append(Head(genotype, c_in0, c_in1, nclass))
 
     def forward(self, x):
         cell_out = []
-        final_out = []
-        for i, block in enumerate(self.blocks):
-            for j, cell in enumerate(block):
-                if i == 0 and j == 0:
-                    # stem0: 1x256x256 -> 32x256x256
-                    s0 = self.stem0(x)
-                    # stem1: 32x256x256 -> 32x128x128
-                    ot = cell(s0)
-                elif i == 0 and j == 1:
-                    ot = cell(s0, cell_out[-1])
-                elif i == 0:
-                    ot = cell(cell_out[-2], cell_out[-1])
-                else:
-                    if i + j < self._depth - 1 and self.gamma[sum(range(self._depth - 2, self._depth - i - 1, -1)) + j] == 0:
-                        ot = None
-                    else:
-                        # ides = [sum(range(self._depth, self._depth - i+1)) + j]
-                        ides = [sum(range(self._depth, self._depth - k, -1)) + j for k in range(i)]
-                        in0 = torch.cat([cell_out[idx] for idx in ides if cell_out[idx] is not None], dim=1)
-                        in1 = cell_out[ides[-1] + 1]
-                        ot = cell(in0, in1)
-                        if j == 0 and self._supervision:
-                            final_out.append(self.head_block[-1](s0, ot))
+        for j, cell in enumerate(self.blocks[0]):
+            if j == 0:
+                # stem0: 1x256x256 -> 32x256x256
+                s0 = self.stem0(x)
+                # stem1: 32x256x256 -> 32x128x128
+                ot = cell(s0)
+                cell_out.append(ot)
+            elif j == 1:
+                ot = cell(s0, cell_out[-1])
+                cell_out.append(ot)
+            else:
+                ot = cell(cell_out[-2], cell_out[-1])
                 cell_out.append(ot)
 
-        del cell_out
+        for j in reversed(range(self._depth - 1)):
+            for i in range(1, self._depth - j):
+                gamma_ides = sum(range(self._depth - 2, self._depth - i - 1, -1)) + j
+                if i + j < self._depth - 1 and self.gamma[gamma_ides] == 0:
+                    ot = None
+                    cell_out[i + j] = ot
+                else:
+                    ides = range(j, i + j)
+                    in0 = torch.cat([cell_out[idx] for idx in ides if cell_out[idx] is not None], dim=1)
+                    in1 = cell_out[i + j]
+                    cell = self.blocks[i][j]
+                    ot = cell(in0, in1)
+                    cell_out[i + j] = ot
+
         if self._supervision:
-            return final_out
+            return [self.head_block[-1](s0, ot) for ot in cell_out]
         else:
-            return [self.head_block[-1](s0, ot)]
+            return [self.head_block[-1](s0, cell_out[-1])]
