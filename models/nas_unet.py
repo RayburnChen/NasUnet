@@ -13,7 +13,7 @@ class BuildCell(nn.Module):
         if cell_type == 'down':
             # Note: the s0 size is twice than s1!
             # self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, ops_order='weight_norm')
-            self.preprocess0 = PoolingOp(c_in0, c, kernel_size=3, padding=1, pool_type='max')  # suppose c_in0 == c
+            self.preprocess0 = nn.MaxPool2d(3, stride=2, padding=1)  # suppose c_in0 == c
         else:
             self.preprocess0 = ConvOps(c_in0, c, kernel_size=3, ops_order='weight_norm_act')
         # self.preprocess1 = ConvOps(c_in1, c, kernel_size=1, ops_order='weight_norm')
@@ -92,7 +92,7 @@ class NasUnet(BaseNet):
 
         self.blocks = nn.ModuleList()
         self.stem0 = ConvOps(in_channels, c_in0, kernel_size=7, ops_order='weight_norm_act')
-        stem1_pool = PoolingOp(c_in0, c_in0, kernel_size=3, padding=1, pool_type='max')
+        stem1_pool = nn.MaxPool2d(3, stride=2, padding=1)
         stem1_block = BasicBlock(c_in0, c_in1, stride=1, dilation=1, previous_dilation=1, norm_layer=nn.BatchNorm2d)
         self.stem1 = nn.Sequential(stem1_pool, stem1_block)
 

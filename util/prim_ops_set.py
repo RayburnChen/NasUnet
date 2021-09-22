@@ -2,15 +2,16 @@ import torch.nn as nn
 from util.utils import *
 
 OPS = {
-    'none': lambda c_in, c_ot, stride, dp: ZeroOp(c_in, c_ot, stride=stride),
-    'identity': lambda c_in, c_ot, stride, dp: IdentityOp(c_in, c_ot),
+    'none': lambda c_in, c_ot, stride, dp: ZeroOp(stride=stride),
+    'identity': lambda c_in, c_ot, stride, dp: nn.Identity(),
+    'avg_pool': lambda c_in, c_ot, stride, dp: nn.AvgPool2d(3, stride=stride, padding=1, count_include_pad=False),
+    'max_pool': lambda c_in, c_ot, stride, dp: nn.MaxPool2d(3, stride=stride, padding=1),
+
     'cweight': lambda c_in, c_ot, stride, dp: CWeightOp(c_in, c_ot, dropout_rate=dp),
-    'dil_conv': lambda c_in, c_ot, stride, dp: ConvOps(c_in, c_ot, dilation=2, dropout_rate=dp),
     'dep_conv': lambda c_in, c_ot, stride, dp: ConvOps(c_in, c_ot, use_depthwise=True, dropout_rate=dp),
-    'shuffle_conv': lambda c_in, c_ot, stride, dp: ConvOps(c_in, c_ot, has_shuffle=True),
     'conv': lambda c_in, c_ot, stride, dp: ConvOps(c_in, c_ot, has_shuffle=False),
-    'avg_pool': lambda c_in, c_ot, stride, dp: PoolingOp(c_in, c_ot, pool_type='avg'),
-    'max_pool': lambda c_in, c_ot, stride, dp: PoolingOp(c_in, c_ot, pool_type='max'),
+    'shuffle_conv': lambda c_in, c_ot, stride, dp: ConvOps(c_in, c_ot, has_shuffle=True),
+    'dil_conv': lambda c_in, c_ot, stride, dp: ConvOps(c_in, c_ot, dilation=2, dropout_rate=dp),
 
     'down_cweight': lambda c_in, c_ot, stride, dp: CWeightOp(c_in, c_ot, stride=2, dropout_rate=dp),
     'down_dep_conv': lambda c_in, c_ot, stride, dp: ConvOps(c_in, c_ot, stride=2, use_depthwise=True, dropout_rate=dp),
@@ -319,123 +320,19 @@ class CWeightOp(BaseOp):
         return rst
 
 
-class PoolingOp(BaseOp):
+class ZeroOp(nn.Module):
 
-    def __init__(self, in_channels, out_channels, pool_type, kernel_size=2, stride=2,
-                 norm_type='gn', use_norm=False, affine=True, act_func=None, dropout_rate=0, ops_order='weight',
-                 padding=None):
-        super(PoolingOp, self).__init__(in_channels, out_channels, norm_type, use_norm, affine, act_func, dropout_rate,
-                                        ops_order)
-
-        self.pool_type = pool_type
-        self.kernel_size = kernel_size
+    def __init__(self, stride):
+        super(ZeroOp, self).__init__()
         self.stride = stride
-
-        if padding is not None:
-            padding = padding
-        elif self.stride == 1:
-            padding = get_same_padding(self.kernel_size)
-        else:
-            padding = 0
-
-        if self.pool_type == 'avg':
-            self.pool = nn.AvgPool2d(self.kernel_size, stride=self.stride, padding=padding, count_include_pad=False)
-        elif self.pool_type == 'max':
-            self.pool = nn.MaxPool2d(self.kernel_size, stride=self.stride, padding=padding)
-        else:
-            raise NotImplementedError
-
-    @property
-    def unit_str(self):
-        if isinstance(self.kernel_size, int):
-            kernel_size = (self.kernel_size, self.kernel_size)
-        else:
-            kernel_size = self.kernel_size
-        return '%dx%d_%sPool' % (kernel_size[0], kernel_size[1], self.pool_type.upper())
-
-    @property
-    def config(self):
-        config = {
-            'name': PoolingOp.__name__,
-            'pool_type': self.pool_type,
-            'kernel_size': self.kernel_size,
-            'stride': self.stride
-        }
-        config.update(super(PoolingOp, self).config)
-        return config
-
-    @staticmethod
-    def build_from_config(config):
-        return PoolingOp(**config)
-
-    def get_flops(self, x):
-        return 0, self.forward(x)
-
-    def weight_call(self, x):
-        return self.pool(x)
-
-
-class IdentityOp(BaseOp):
-
-    def __init__(self, in_channels, out_channels, norm_type=None, use_norm=False, affine=True,
-                 act_func=None, dropout_rate=0, ops_order='weight'):
-        super(IdentityOp, self).__init__(in_channels, out_channels, norm_type, use_norm, affine,
-                                         act_func, dropout_rate, ops_order)
-
-    @property
-    def unit_str(self):
-        return 'Identity'
-
-    @property
-    def config(self):
-        config = {
-            'name': IdentityOp.__name__,
-        }
-        config.update(super(IdentityOp, self).config)
-        return config
-
-    @staticmethod
-    def build_from_config(config):
-        return IdentityOp(**config)
-
-    def get_flops(self, x):
-        return 0, self.forward(x)
-
-    def weight_call(self, x):
-        return x
-
-
-class ZeroOp(BaseOp):
-    def __init__(self, in_channels, out_channels, stride):
-        super(ZeroOp, self).__init__(in_channels, out_channels)
-        self.stride = stride
-
-    @property
-    def unit_str(self):
-        return 'Zero'
-
-    @property
-    def config(self):
-        return {
-            'name': ZeroOp.__name__,
-            'stride': self.stride,
-        }
-
-    @staticmethod
-    def build_from_config(config):
-        return ZeroOp(**config)
-
-    def get_flops(self, x):
-        return 0, self.forward(x)
 
     def forward(self, x):
-        n, c, h, w = x.size()
-        h //= self.stride
-        w //= self.stride
-        if x.is_cuda:
-            with torch.cuda.device(x.get_device()):
-                padding = torch.cuda.FloatTensor(n, c, h, w).fill_(0)
-        else:
-            padding = torch.zeros(n, c, h, w)
-        padding = torch.autograd.Variable(padding, requires_grad=False)
-        return padding
+        if self.stride == 1:
+            return x.mul(0.)
+        return x[:, :, ::self.stride, ::self.stride].mul(0.)
+
+
+
+
+
+

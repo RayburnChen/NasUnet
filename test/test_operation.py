@@ -68,7 +68,7 @@ class TestOperation(unittest.TestCase):
 
     def test_op5(self):
         start = time.time()
-        layer = IdentityOp(self.c, self.c)
+        layer = nn.identity(self.c, self.c)
         loss = self.classifier(layer=layer)
         end = time.time()
         print('Identity: loss {}, cost: {}s'.format(loss, end-start))
