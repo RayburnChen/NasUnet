@@ -38,12 +38,6 @@ class MoNuSAC(BaseDataset):
                     # image
                     # ../train_tiny_data/imgseg/MoNuSAC/MoNuSAC_cleaned/images/TCGA-5P-A9K0-01Z-00-DX1_1_1.png
                     image_dir = os.path.join(cleaned_image_path, file)
-                    im = Image.open(image_dir)
-                    width, height = im.size
-                    im.close()
-                    if width < 256 or height < 256:
-                        os.remove(mask_dir)
-                        os.remove(image_dir)
                     self.data_info.append((image_dir, mask_dir))
 
             if len(self.data_info) == 0:
