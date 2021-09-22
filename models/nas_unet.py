@@ -12,12 +12,12 @@ class BuildCell(nn.Module):
 
         if cell_type == 'down':
             # Note: the s0 size is twice than s1!
-            self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, ops_order='weight_norm')
+            # self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, ops_order='weight_norm')
+            self.preprocess0 = PoolingOp(c_in0, c, kernel_size=3, padding=1, pool_type='max')  # suppose c_in0 == c
         else:
-            self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, ops_order='weight_norm')
+            self.preprocess0 = ConvOps(c_in0, c, kernel_size=3, ops_order='weight_norm_act')
         # self.preprocess1 = ConvOps(c_in1, c, kernel_size=1, ops_order='weight_norm_act')
-        # suppose c_in1 == c
-        self.preprocess1 = nn.Identity()
+        self.preprocess1 = nn.Identity()  # suppose c_in1 == c
 
         if cell_type == 'up':
             op_names, idx = zip(*genotype.up)
