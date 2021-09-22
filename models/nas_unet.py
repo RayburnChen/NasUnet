@@ -12,12 +12,12 @@ class BuildCell(nn.Module):
 
         if cell_type == 'down':
             # Note: the s0 size is twice than s1!
-            self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, ops_order='weight_norm')
+            # self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, ops_order='weight_norm')
+            self.preprocess0 = PoolingOp(c_in0, c, kernel_size=3, padding=1, pool_type='max')  # suppose c_in0 == c
         else:
-            self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, ops_order='weight_norm')
-        # self.preprocess1 = ConvOps(c_in1, c, kernel_size=1, ops_order='weight_norm_act')
-        # suppose c_in1 == c
-        self.preprocess1 = nn.Identity()
+            self.preprocess0 = ConvOps(c_in0, c, kernel_size=3, ops_order='weight_norm_act')
+        # self.preprocess1 = ConvOps(c_in1, c, kernel_size=1, ops_order='weight_norm')
+        self.preprocess1 = nn.Identity()  # suppose c_in1 == c
 
         if cell_type == 'up':
             op_names, idx = zip(*genotype.up)
@@ -38,7 +38,8 @@ class BuildCell(nn.Module):
 
         self._ops = nn.ModuleList()
         for name, index in zip(op_names, idx):
-            op = OPS[name](c, None, affine=True, dp=self.dropout_prob)
+            op = OPS[name](c, c, None, affine=True, dp=self.dropout_prob)
+            # op = OPS[name](c_in, c_ot, None, affine=True, dp=self.dropout_prob)
             self._ops += [op]
         self._indices = idx
 
@@ -91,7 +92,7 @@ class NasUnet(BaseNet):
 
         self.blocks = nn.ModuleList()
         self.stem0 = ConvOps(in_channels, c_in0, kernel_size=7, ops_order='weight_norm_act')
-        stem1_pool = PoolingOp(c_in0, c_in1, kernel_size=3, padding=1, pool_type='max')
+        stem1_pool = PoolingOp(c_in0, c_in0, kernel_size=3, padding=1, pool_type='max')
         stem1_block = BasicBlock(c_in0, c_in1, stride=1, dilation=1, previous_dilation=1, norm_layer=nn.BatchNorm2d)
         self.stem1 = nn.Sequential(stem1_pool, stem1_block)
 
@@ -100,7 +101,7 @@ class NasUnet(BaseNet):
         down_block = nn.ModuleList()
         for i in range(self._depth):
             if i == 0:
-                filters = [1, 1, int(c_in0), 'stem1']
+                filters = [1, 1, int(c_in1), 'stem1']
                 down_cell = self.stem1
                 down_f.append(filters)
                 down_block += [down_cell]
@@ -110,7 +111,7 @@ class NasUnet(BaseNet):
                 down_cell = BuildCell(genotype, c_in0, c_in1, c_curr, cell_type='down', dropout_prob=dropout_prob)
                 down_f.append(filters)
                 down_block += [down_cell]
-                c_in0, c_in1 = c_in1, c_curr  # down_cell._multiplier
+                c_in0, c_in1 = c_in1, c_curr
 
         num_filters.append(down_f)
         self.blocks += [down_block]
