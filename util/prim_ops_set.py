@@ -15,6 +15,8 @@ OPS = {
     'dil_conv_2': lambda c_in, c_ot, op_type, dp: build_ops('dil_conv_2', op_type, c_in, c_ot, dp=dp),
     'dil_conv_3': lambda c_in, c_ot, op_type, dp: build_ops('dil_conv_3', op_type, c_in, c_ot, dp=dp),
     'se_conv': lambda c_in, c_ot, op_type, dp: build_ops('se_conv', op_type, c_in, c_ot, dp=dp),
+
+    'up_sample': lambda c_in, c_ot, op_type, dp: nn.Upsample(scale_factor=2, mode='bilinear'),
 }
 
 DownOps = [
@@ -27,6 +29,7 @@ DownOps = [
 ]
 
 UpOps = [
+    'up_sample',
     'conv',
     'dil_conv_2',
     'dil_conv_3',
@@ -35,7 +38,7 @@ UpOps = [
 
 NormOps = [
     # 'avg_pool',
-    # 'max_pool',
+    'max_pool',
     'identity',
     'none',
     'conv',
