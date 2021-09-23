@@ -23,14 +23,14 @@ CellLinkDownPos = [
     'cweight',
     'dil_conv',
     'dep_conv',
-    'conv'
+    'conv',
 ]
 
 CellLinkUpPos = [
     'cweight',
     'dep_conv',
     'conv',
-    'dil_conv'
+    'dil_conv',
 ]
 
 CellPos = [
