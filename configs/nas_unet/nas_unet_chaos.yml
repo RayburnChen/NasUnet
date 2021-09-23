@@ -13,7 +13,7 @@ searching:
     epoch: 1000
     batch_size: 12
 #    batch_size: 3
-    report_freq: 20
+    report_freq: 10
     n_workers: 2
     alpha_begin: 15
     max_patience: 50
@@ -22,7 +22,7 @@ searching:
     sharing_normal: True
     double_down_channel: False
     deep_supervision: False
-    meta_node_num: 3
+    meta_node_num: 2
     grad_clip: 5
     train_portion: 0.5
     model_optimizer:
