@@ -1,34 +1,12 @@
 from collections import namedtuple
-import numpy as np
+
+from util import *
 
 Genotype = namedtuple('Genotype', ['down', 'down_concat', 'up', 'up_concat', 'gamma'])
 
-CellLinkDownPos = [
-    'avg_pool',
-    'max_pool',
-    'down_cweight',
-    'down_dil_conv',
-    'down_dep_conv',
-    'down_conv'
-]
-
-CellLinkUpPos = [
-    'up_cweight',
-    'up_dep_conv',
-    'up_conv',
-    'up_dil_conv'
-]
-
-CellPos = [
-    'identity',
-    'none',
-    'cweight',
-    'dil_conv',
-    'dep_conv',
-    'conv',
-]
 
 class GenoParser:
+
     def __init__(self, meta_node_num=4):
         self._meta_node_num = meta_node_num
 

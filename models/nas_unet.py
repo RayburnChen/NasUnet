@@ -28,18 +28,24 @@ class BuildCell(nn.Module):
 
         self.post_process = ConvOps(c * len(concat), c, kernel_size=3, ops_order='weight_norm_act')
         self.dropout_prob = dropout_prob
-        self._compile(c, op_names, idx, concat)
+        self._compile(c, cell_type, op_names, idx, concat)
 
-    def _compile(self, c, op_names, idx, concat):
+    def _compile(self, c, cell_type, op_names, idx, concat):
         assert len(op_names) == len(idx)
         self._num_meta_node = len(op_names) // 2
         self._concat = concat
         self._multiplier = len(concat)
+        self._input_node_num = 2
+        idx_start = 0 if cell_type == 'down' else 1
 
         self._ops = nn.ModuleList()
         for name, index in zip(op_names, idx):
-            op = OPS[name](c, c, None, dp=self.dropout_prob)
-            # op = OPS[name](c_in, c_ot, None, affine=True, dp=self.dropout_prob)
+            if cell_type == 'down':
+                op_type = OpType.DOWN if idx_start <= index < self._input_node_num else OpType.NORM
+                op = OPS[name](c, c, op_type, dp=self.dropout_prob)
+            else:
+                op_type = OpType.UP if idx_start <= index < self._input_node_num else OpType.NORM
+                op = OPS[name](c, c, op_type, dp=self.dropout_prob)
             self._ops += [op]
         self._indices = idx
 

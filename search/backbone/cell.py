@@ -1,14 +1,10 @@
-from enum import Enum
-
 from torch.functional import F
-
-from util.genotype import CellLinkDownPos, CellLinkUpPos, CellPos
 from util.prim_ops_set import *
 
 
 class MixedOp(nn.Module):
 
-    def __init__(self, c, stride, op_type):
+    def __init__(self, c, op_type):
         super(MixedOp, self).__init__()
         self._ops = nn.ModuleList()
         self._op_type = op_type
@@ -16,7 +12,7 @@ class MixedOp(nn.Module):
         self.mp = nn.MaxPool2d(2, 2)
 
         for pri in self._op_type.value:
-            op = OPS[pri](c // self.k, c // self.k, stride, dp=0)
+            op = OPS[pri](c // self.k, c // self.k, self._op_type, dp=0)
             self._ops.append(op)
 
     def forward(self, x, weights_norm, weights_chg):
@@ -74,7 +70,7 @@ class Cell(nn.Module):
 
         self._ops = nn.ModuleList()
 
-        idx_up_or_down_start = 0 if self._cell_type == 'down' else 1
+        idx_start = 0 if self._cell_type == 'down' else 1
         # i=0  j=0,1
         # i=1  j=0,1,2
         # i=2  j=0,1,2,3
@@ -84,13 +80,13 @@ class Cell(nn.Module):
                 # only the first input is reduction
                 # down cell: |_|_|_|_|*|_|_|*|*| where _ indicate down operation
                 # up cell:   |*|_|*|*|_|*|_|*|*| where _ indicate up operation
-                if idx_up_or_down_start <= j < 2:
+                if idx_start <= j < 2:
                     if self._cell_type == 'up':
-                        op = MixedOp(c, stride=2, op_type=OpType.UP)
+                        op = MixedOp(c, op_type=OpType.UP)
                     else:
-                        op = MixedOp(c, stride=2, op_type=OpType.DOWN)
+                        op = MixedOp(c, op_type=OpType.DOWN)
                 else:
-                    op = MixedOp(c, stride=1, op_type=OpType.NORM)
+                    op = MixedOp(c, op_type=OpType.NORM)
 
                 self._ops.append(op)
 
@@ -120,12 +116,6 @@ class Cell(nn.Module):
             states.append(s)
 
         return self.post_process(torch.cat(states[-self._multiplier:], dim=1))
-
-
-class OpType(Enum):
-    UP = CellLinkUpPos
-    DOWN = CellLinkDownPos
-    NORM = CellPos
 
 
 def channel_shuffle(x, groups):

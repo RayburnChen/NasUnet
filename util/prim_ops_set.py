@@ -1,29 +1,76 @@
+from enum import Enum
+from typing import Optional
+
 import torch.nn as nn
+
 from util.utils import *
 
 OPS = {
-    'none': lambda c_in, c_ot, stride, dp: ZeroOp(stride=stride),
-    'identity': lambda c_in, c_ot, stride, dp: nn.Identity(),
-    'avg_pool': lambda c_in, c_ot, stride, dp: nn.AvgPool2d(3, stride=stride, padding=1, count_include_pad=False),
-    'max_pool': lambda c_in, c_ot, stride, dp: nn.MaxPool2d(3, stride=stride, padding=1),
+    'none': lambda c_in, c_ot, op_type, dp: ZeroOp(stride=1),
+    'identity': lambda c_in, c_ot, op_type, dp: nn.Identity(),
+    'avg_pool': lambda c_in, c_ot, op_type, dp: build_ops('avg_pool', op_type),
+    'max_pool': lambda c_in, c_ot, op_type, dp: build_ops('max_pool', op_type),
 
-    'cweight': lambda c_in, c_ot, stride, dp: CWeightOp(c_in, c_ot, dropout_rate=dp),
-    'dep_conv': lambda c_in, c_ot, stride, dp: ConvOps(c_in, c_ot, use_depthwise=True, dropout_rate=dp),
-    'conv': lambda c_in, c_ot, stride, dp: ConvOps(c_in, c_ot, has_shuffle=False),
-    'shuffle_conv': lambda c_in, c_ot, stride, dp: ConvOps(c_in, c_ot, has_shuffle=True),
-    'dil_conv': lambda c_in, c_ot, stride, dp: ConvOps(c_in, c_ot, dilation=2, dropout_rate=dp),
-
-    'down_cweight': lambda c_in, c_ot, stride, dp: CWeightOp(c_in, c_ot, stride=2, dropout_rate=dp),
-    'down_dep_conv': lambda c_in, c_ot, stride, dp: ConvOps(c_in, c_ot, stride=2, use_depthwise=True, dropout_rate=dp),
-    'down_conv': lambda c_in, c_ot, stride, dp: ConvOps(c_in, c_ot, stride=2, dropout_rate=dp),
-    'down_dil_conv': lambda c_in, c_ot, stride, dp: ConvOps(c_in, c_ot, stride=2, dilation=2, dropout_rate=dp),
-
-    'up_cweight': lambda c_in, c_ot, stride, dp: CWeightOp(c_in, c_ot, stride=2, use_transpose=True, output_padding=1, dropout_rate=dp),
-    'up_dep_conv': lambda c_in, c_ot, stride, dp: ConvOps(c_in, c_ot, stride=2, use_transpose=True, output_padding=1, use_depthwise=True, dropout_rate=dp),
-    'up_conv': lambda c_in, c_ot, stride, dp: ConvOps(c_in, c_ot, stride=2, use_transpose=True, output_padding=1, dropout_rate=dp),
-    'up_dil_conv': lambda c_in, c_ot, stride, dp: ConvOps(c_in, c_ot, stride=2, use_transpose=True, output_padding=1, dilation=3, dropout_rate=dp),
-
+    'cweight': lambda c_in, c_ot, op_type, dp: build_ops('cweight', op_type, c_in, c_ot, dp=dp),
+    'dep_conv': lambda c_in, c_ot, op_type, dp: build_ops('dep_conv', op_type, c_in, c_ot, dp=dp),
+    'conv': lambda c_in, c_ot, op_type, dp: build_ops('conv', op_type, c_in, c_ot, dp=dp),
+    'dil_conv': lambda c_in, c_ot, op_type, dp: build_ops('dil_conv', op_type, c_in, c_ot, dp=dp),
 }
+
+CellLinkDownPos = [
+    'avg_pool',
+    'max_pool',
+    'cweight',
+    'dil_conv',
+    'dep_conv',
+    'conv'
+]
+
+CellLinkUpPos = [
+    'cweight',
+    'dep_conv',
+    'conv',
+    'dil_conv'
+]
+
+CellPos = [
+    'identity',
+    'none',
+    'cweight',
+    'dil_conv',
+    'dep_conv',
+    'conv',
+]
+
+
+class OpType(Enum):
+    UP = CellLinkUpPos
+    DOWN = CellLinkDownPos
+    NORM = CellPos
+
+
+def build_ops(op_name, op_type: OpType, c_in: Optional[int] = None, c_ot: Optional[int] = None, dp=0):
+    stride = 1 if op_type == OpType.NORM else 2
+    use_transpose = True if op_type == OpType.UP else False
+    output_padding = 1 if op_type == OpType.UP else 0
+    if op_name == 'avg_pool':
+        return nn.AvgPool2d(3, stride=stride, padding=1, count_include_pad=False)
+    elif op_name == 'max_pool':
+        return nn.MaxPool2d(3, stride=stride, padding=1)
+    elif op_name == 'cweight':
+        return CWeightOp(c_in, c_ot, stride=stride, use_transpose=use_transpose, output_padding=output_padding,
+                         dropout_rate=dp)
+    elif op_name == 'dep_conv':
+        return ConvOps(c_in, c_ot, stride=stride, use_transpose=use_transpose, output_padding=output_padding,
+                       use_depthwise=True, dropout_rate=dp)
+    elif op_name == 'conv':
+        return ConvOps(c_in, c_ot, stride=stride, use_transpose=use_transpose, output_padding=output_padding,
+                       dropout_rate=dp)
+    elif op_name == 'dil_conv':
+        # norm 1 down 2 up 3
+        # dilation = 1 if op_type == OpType.NORM else 2 if op_type == OpType.DOWN else 3
+        return ConvOps(c_in, c_ot, stride=stride, use_transpose=use_transpose, output_padding=output_padding,
+                       dilation=2, dropout_rate=dp)
 
 
 class AbstractOp(nn.Module):
@@ -330,9 +377,3 @@ class ZeroOp(nn.Module):
         if self.stride == 1:
             return x.mul(0.)
         return x[:, :, ::self.stride, ::self.stride].mul(0.)
-
-
-
-
-
-
