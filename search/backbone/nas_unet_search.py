@@ -141,9 +141,9 @@ class NasUnetSearch(nn.Module):
 
     def _init_alphas(self, depth):
 
-        normal_num_ops = len(CellPos)
-        down_num_ops = len(CellLinkDownPos)
-        up_num_ops = len(CellLinkUpPos)
+        normal_num_ops = len(NormOps)
+        down_num_ops = len(DownOps)
+        up_num_ops = len(UpOps)
 
         k = sum(1 for i in range(self._meta_node_num) for n in range(2 + i))  # total number of input node
         self.alphas_down = nn.Parameter(1e-3 * torch.randn(k, down_num_ops))

@@ -41,7 +41,7 @@ class GenoParser:
                                 key=lambda x: -max(W2[x][k] for k in range(len(W2[x]))))[:min(len(W2), 2)]
 
                 # Get the best operation for up or down operation
-                CellPrimitive = CellLinkUpPos if cell_type == 'up' else CellLinkDownPos
+                CellPrimitive = UpOps if cell_type == 'up' else DownOps
                 for j in edges2:
                     k_best = None
                     for k in range(len(W2[j])):
@@ -56,17 +56,17 @@ class GenoParser:
             if len(W1) > 0:
                 edges1 = sorted(range(len(W1)), key=lambda x: -max(W1[x][k]
                                                                    for k in range(len(W1[x])) if
-                                                                   k != CellPos.index('none')))[:min(len(W1), 2)]
+                                                                   k != NormOps.index('none')))[:min(len(W1), 2)]
                 # Get the best operation for normal operation
                 for j in edges1:
                     k_best = None
                     for k in range(len(W1[j])):
-                        if k != CellPos.index('none'):
+                        if k != NormOps.index('none'):
                             if k_best is None or W1[j][k] > W1[j][k_best]:
                                 k_best = k
 
                     # Gene item: (weight_value, operation, node idx)
-                    gene_item1.append((W1[j][k_best], CellPos[k_best],
+                    gene_item1.append((W1[j][k_best], NormOps[k_best],
                                        0 if j == 0 and cell_type == 'up' else j + inp2changedim))
 
             # normalize the weights value of gene_item1 and gene_item2

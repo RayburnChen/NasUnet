@@ -17,7 +17,7 @@ OPS = {
     'dil_conv': lambda c_in, c_ot, op_type, dp: build_ops('dil_conv', op_type, c_in, c_ot, dp=dp),
 }
 
-CellLinkDownPos = [
+DownOps = [
     'avg_pool',
     'max_pool',
     'cweight',
@@ -26,14 +26,14 @@ CellLinkDownPos = [
     'conv',
 ]
 
-CellLinkUpPos = [
+UpOps = [
     'cweight',
     'dep_conv',
     'conv',
     'dil_conv',
 ]
 
-CellPos = [
+NormOps = [
     'identity',
     'none',
     'cweight',
@@ -44,9 +44,9 @@ CellPos = [
 
 
 class OpType(Enum):
-    UP = CellLinkUpPos
-    DOWN = CellLinkDownPos
-    NORM = CellPos
+    UP = UpOps
+    DOWN = DownOps
+    NORM = NormOps
 
 
 def build_ops(op_name, op_type: OpType, c_in: Optional[int] = None, c_ot: Optional[int] = None, dp=0):
@@ -67,86 +67,40 @@ def build_ops(op_name, op_type: OpType, c_in: Optional[int] = None, c_ot: Option
         return ConvOps(c_in, c_ot, stride=stride, use_transpose=use_transpose, output_padding=output_padding,
                        dropout_rate=dp)
     elif op_name == 'dil_conv':
-        # norm 1 down 2 up 3
-        # dilation = 1 if op_type == OpType.NORM else 2 if op_type == OpType.DOWN else 3
         return ConvOps(c_in, c_ot, stride=stride, use_transpose=use_transpose, output_padding=output_padding,
                        dilation=2, dropout_rate=dp)
 
 
-class AbstractOp(nn.Module):
+class BaseOp(nn.Module):
 
-    def forward(self, x):
-        raise NotImplementedError
-
-    @property
-    def unit_str(self):
-        raise NotImplementedError
-
-    @property
-    def config(self):
-        raise NotImplementedError
-
-    @staticmethod
-    def build_from_config(config):
-        raise NotImplementedError
-
-
-class BaseOp(AbstractOp):
-
-    def __init__(self, in_channels, out_channels, norm_type='gn', use_norm=True, affine=True,
-                 act_func='relu', dropout_rate=0, ops_order='weight_norm_act'):
+    def __init__(self, in_channels, out_channels, norm_type='gn', affine=True, act_func='relu', dropout_rate=0, ops_order='weight_norm_act'):
         super(BaseOp, self).__init__()
 
         self.in_channels = in_channels
         self.out_channels = out_channels
 
-        self.use_norm = use_norm
         self.act_func = act_func
         self.dropout_rate = dropout_rate
         self.ops_order = ops_order
         self.norm_type = norm_type
         self.c = 16
+        self.affine = affine
+
+        self.norm = None
+        self.activation = None
+        self.dropout = None
 
         # batch norm, group norm, instance norm, layer norm
-        if self.use_norm:
-            # Ref: <Group Normalization> https://arxiv.org/abs/1803.08494
-            # 16 channels for one group is best
-            if self.norm_before_weight:
-                group = 1 if (in_channels % self.c > 0) else 0
-                group += in_channels // self.c
-                if norm_type == 'gn':
-                    self.norm = nn.GroupNorm(group, in_channels, affine=affine)
-                else:
-                    self.norm = nn.BatchNorm2d(in_channels, affine=affine)
-            else:
-                group = 1 if (out_channels % self.c > 0) else 0
-                group += out_channels // self.c
-                if norm_type == 'gn':
-                    self.norm = nn.GroupNorm(group, out_channels, affine=affine)
-                else:
-                    self.norm = nn.BatchNorm2d(out_channels, affine=affine)
-        else:
-            self.norm = None
+        if 'norm' in self.ops_list:
+            self.build_norm()
 
         # activation
-        if act_func == 'relu':
-            if self.ops_list[0] == 'act':
-                self.activation = nn.ReLU(inplace=False)
-            else:
-                self.activation = nn.ReLU(inplace=True)
-        elif act_func == 'relu6':
-            if self.ops_list[0] == 'act':
-                self.activation = nn.ReLU6(inplace=False)
-            else:
-                self.activation = nn.ReLU6(inplace=True)
-        else:
-            self.activation = None
+        if 'act' in self.ops_list:
+            self.build_act()
 
         # dropout
         if self.dropout_rate > 0:
             self.dropout = nn.Dropout2d(self.dropout_rate, inplace=False)
-        else:
-            self.dropout = None
 
     @property
     def ops_list(self):
@@ -161,31 +115,29 @@ class BaseOp(AbstractOp):
                 return False
         raise ValueError('Invalid ops_order: %s' % self.ops_order)
 
-    @property
-    def unit_str(self):
-        raise NotImplementedError
+    def build_norm(self):
+        # Ref: <Group Normalization> https://arxiv.org/abs/1803.08494
+        # 16 channels for one group is best
+        if self.norm_before_weight:
+            group = 1 if (self.in_channels % self.c > 0) else 0
+            group += self.in_channels // self.c
+            if self.norm_type == 'gn':
+                self.norm = nn.GroupNorm(group, self.in_channels, affine=self.affine)
+            else:
+                self.norm = nn.BatchNorm2d(self.in_channels, affine=self.affine)
+        else:
+            group = 1 if (self.out_channels % self.c > 0) else 0
+            group += self.out_channels // self.c
+            if self.norm_type == 'gn':
+                self.norm = nn.GroupNorm(group, self.out_channels, affine=self.affine)
+            else:
+                self.norm = nn.BatchNorm2d(self.out_channels, affine=self.affine)
 
-    @property
-    def config(self):
-        return {
-            'in_channels': self.in_channels,
-            'out_channels': self.out_channels,
-            'use_norm': self.use_norm,
-            'act_func': self.act_func,
-            'dropout_rate': self.dropout_rate,
-            'ops_order': self.ops_order
-        }
-
-    @staticmethod
-    def build_from_config(config):
-        raise NotImplementedError
-
-    @staticmethod
-    def is_zero_ops():
-        return False
-
-    def get_flops(self, x):
-        raise NotImplementedError
+    def build_act(self):
+        if self.act_func == 'relu':
+            self.activation = nn.ReLU(inplace=True)
+        elif self.act_func == 'relu6':
+            self.activation = nn.ReLU6(inplace=True)
 
     def weight_call(self, x):
         raise NotImplementedError
@@ -211,18 +163,16 @@ class BaseOp(AbstractOp):
 class ConvOps(BaseOp):
 
     def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, dilation=1, groups=1,
-                 bias=False, has_shuffle=False, use_transpose=False, output_padding=0, use_depthwise=False,
-                 norm_type='gn', use_norm=True, affine=True, act_func='relu', dropout_rate=0,
+                 bias=False, use_transpose=False, output_padding=0, use_depthwise=False,
+                 norm_type='gn', affine=True, act_func='relu', dropout_rate=0,
                  ops_order='weight_norm_act'):
-        super(ConvOps, self).__init__(in_channels, out_channels, norm_type, use_norm, affine, act_func, dropout_rate,
-                                      ops_order)
+        super(ConvOps, self).__init__(in_channels, out_channels, norm_type, affine, act_func, dropout_rate, ops_order)
 
         self.kernel_size = kernel_size
         self.stride = stride
         self.dilation = dilation
         self.groups = groups
         self.bias = bias
-        self.has_shuffle = has_shuffle
         self.use_transpose = use_transpose
         self.use_depthwise = use_depthwise
         self.output_padding = output_padding
@@ -259,65 +209,26 @@ class ConvOps(BaseOp):
                                       stride=self.stride, padding=padding,
                                       dilation=self.dilation, bias=False)
 
-    @property
-    def unit_str(self):
-        if isinstance(self.kernel_size, int):
-            kernel_size = (self.kernel_size, self.kernel_size)
-        else:
-            kernel_size = self.kernel_size
-        basic_str = 'Conv'
-        basic_str = 'Dilation' + basic_str if self.dilation > 1 else basic_str
-        basic_str = 'Depth' + basic_str if self.use_depthwise else basic_str
-        basic_str = 'Group' + basic_str if self.groups > 1 else basic_str
-        basic_str = 'Tran' + basic_str if self.use_transpose else basic_str
-        basic_str = '%dx%d_' % (kernel_size[0], kernel_size[1]) + basic_str
-        return basic_str
-
-    @property
-    def config(self):
-        config = {
-            'name': ConvOps.__name__,
-            'kernel_size': self.kernel_size,
-            'stride': self.stride,
-            'dilation': self.dilation,
-            'groups': self.groups,
-            'bias': self.bias,
-            'has_shuffle': self.has_shuffle,
-            'depth_wise': self.use_depthwise,
-            'transpose': self.use_transpose,
-        }
-        config.update(super(ConvOps, self).config)
-        return config
-
-    @staticmethod
-    def build_from_config(config):
-        return ConvOps(**config)
-
     def weight_call(self, x):
         if self.use_depthwise:
             x = self.depth_conv(x)
             x = self.point_conv(x)
         else:
             x = self.conv(x)
-        if self.has_shuffle and self.groups > 1:
-            x = shuffle_layer(x, self.groups)
         return x
 
 
 class CWeightOp(BaseOp):
 
     def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, dilation=1, groups=None,
-                 bias=False, has_shuffle=False, use_transpose=False, output_padding=0, norm_type='gn',
-                 use_norm=False, affine=True, act_func='relu', dropout_rate=0, ops_order='weight_act'):
-        super(CWeightOp, self).__init__(in_channels, out_channels, norm_type, use_norm, affine, act_func, dropout_rate,
-                                        ops_order)
+                 bias=False, use_transpose=False, output_padding=0, norm_type='gn', affine=True, act_func='relu', dropout_rate=0, ops_order='weight_act'):
+        super(CWeightOp, self).__init__(in_channels, out_channels, norm_type, affine, act_func, dropout_rate, ops_order)
 
         self.kernel_size = kernel_size
         self.stride = stride
         self.dilation = dilation
         self.groups = groups
         self.bias = bias
-        self.has_shuffle = has_shuffle
         self.use_transpose = use_transpose
         self.output_padding = output_padding
 
@@ -348,16 +259,6 @@ class CWeightOp(BaseOp):
             group = 1 if (out_channels % 16 > 0) else 0
             group += out_channels // 16
             self.norm = nn.GroupNorm(group, out_channels, affine=affine)
-
-    @property
-    def unit_str(self):
-        basic_str = 'ChannelWeight'
-        basic_str = 'Tran' + basic_str if self.use_transpose else basic_str
-        return basic_str
-
-    @staticmethod
-    def build_from_config(config):
-        return CWeightOp(**config)
 
     def weight_call(self, x):
         b, c, _, _ = x.size()
