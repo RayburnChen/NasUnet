@@ -29,16 +29,15 @@ def get_same_padding(kernel_size):
     return kernel_size // 2
 
 
-def shuffle_layer(x, groups):
-    batch_size, num_channels, height, width = x.data.size()
-    channels_per_group = num_channels // groups
+def channel_shuffle(x, groups):
+    # Channel shuffle: [N,C,H,W] -> [N,g,C/g,H,W] -> [N,C/g,g,H,w] -> [N,C,H,W]
+    batch, c, h, w = x.size()
+    c_per_g = c // groups
     # reshape
-    x = x.view(batch_size, groups, channels_per_group, height, width)
-    # transpose
+    x = x.view(batch, groups, c_per_g, h, w)
     x = torch.transpose(x, 1, 2).contiguous()
     # flatten
-    x = x.view(batch_size, -1, height, width)
-    return x
+    return x.view(batch, -1, h, w)
 
 
 class RunScore(object):

@@ -15,7 +15,7 @@ class BuildCell(nn.Module):
             # self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, ops_order='weight_norm')
             self.preprocess0 = nn.MaxPool2d(3, stride=2, padding=1)  # suppose c_in0 == c
         else:
-            self.preprocess0 = ConvOps(c_in0, c, kernel_size=3, ops_order='weight_norm_act')
+            self.preprocess0 = ConvGnReLU(c_in0, c, kernel_size=3)
         # self.preprocess1 = ConvOps(c_in1, c, kernel_size=1, ops_order='weight_norm')
         self.preprocess1 = nn.Identity()  # suppose c_in1 == c
 
@@ -26,7 +26,7 @@ class BuildCell(nn.Module):
             op_names, idx = zip(*genotype.down)
             concat = genotype.down_concat
 
-        self.post_process = ConvOps(c * len(concat), c, kernel_size=3, ops_order='weight_norm_act')
+        self.post_process = ConvGnReLU(c * len(concat), c, kernel_size=3)
         self.dropout_prob = dropout_prob
         self._compile(c, cell_type, op_names, idx, concat)
 
@@ -72,7 +72,7 @@ class Head(nn.Module):
     def __init__(self, genotype, c_in0, c_in1, nclass):
         super(Head, self).__init__()
         self.up_cell = BuildCell(genotype, c_in0, c_in1, c_in1, cell_type='up')
-        self.segmentation_head = ConvOps(c_in1, nclass, kernel_size=3, ops_order='weight')
+        self.segmentation_head = Conv(c_in1, nclass, kernel_size=3)
 
     def forward(self, s0, ot):
         return self.segmentation_head(self.up_cell(s0, ot))
@@ -97,7 +97,7 @@ class NasUnet(BaseNet):
         c_in0, c_in1, c_curr = c, c, c
 
         self.blocks = nn.ModuleList()
-        self.stem0 = ConvOps(in_channels, c_in0, kernel_size=7, ops_order='weight_norm_act')
+        self.stem0 = ConvGnReLU(in_channels, c_in0, kernel_size=7)
         stem1_pool = nn.MaxPool2d(3, stride=2, padding=1)
         stem1_block = BasicBlock(c_in0, c_in1, stride=1, dilation=1, previous_dilation=1, norm_layer=nn.BatchNorm2d)
         self.stem1 = nn.Sequential(stem1_pool, stem1_block)

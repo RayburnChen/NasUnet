@@ -12,7 +12,7 @@ class Head(nn.Module):
     def __init__(self, meta_node_num, c_in0, c_in1, nclass):
         super(Head, self).__init__()
         self.up_cell = Cell(meta_node_num, c_in0, c_in1, c_in1, cell_type='up')
-        self.segmentation_head = ConvOps(c_in1, nclass, kernel_size=3, ops_order='weight')
+        self.segmentation_head = Conv(c_in1, nclass, kernel_size=3)
 
     def forward(self, s0, ot, weights_up_norm, weights_up, betas_up):
         return self.segmentation_head(self.up_cell(s0, ot, weights_up_norm, weights_up, betas_up))
@@ -37,7 +37,7 @@ class SearchULikeCNN(nn.Module):
         c_in0, c_in1, c_curr = c, c, c
 
         self.blocks = nn.ModuleList()
-        self.stem0 = ConvOps(in_channels, c_in0, kernel_size=7, ops_order='weight_norm_act')
+        self.stem0 = ConvGnReLU(in_channels, c_in0, kernel_size=7)
         stem1_pool = nn.MaxPool2d(3, stride=2, padding=1)
         stem1_block = BasicBlock(c_in0, c_in1, stride=1, dilation=1, previous_dilation=1, norm_layer=nn.BatchNorm2d)
         self.stem1 = nn.Sequential(stem1_pool, stem1_block)

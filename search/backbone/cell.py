@@ -62,11 +62,11 @@ class Cell(nn.Module):
             # self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, ops_order='weight_norm')
             self.preprocess0 = nn.MaxPool2d(3, stride=2, padding=1)  # suppose c_in0 == c
         else:
-            self.preprocess0 = ConvOps(c_in0, c, kernel_size=3, ops_order='weight_norm_act')
+            self.preprocess0 = ConvGnReLU(c_in0, c, kernel_size=3)
         # self.preprocess1 = ConvOps(c_in1, c, kernel_size=1, ops_order='weight_norm_act')
         self.preprocess1 = nn.Identity()  # suppose c_in1 == c
 
-        self.post_process = ConvOps(c * self._meta_node_num, c, kernel_size=3, ops_order='weight_norm_act')
+        self.post_process = ConvGnReLU(c * self._meta_node_num, c, kernel_size=3)
 
         self._ops = nn.ModuleList()
 
@@ -118,17 +118,5 @@ class Cell(nn.Module):
         return self.post_process(torch.cat(states[-self._multiplier:], dim=1))
 
 
-def channel_shuffle(x, groups):
-    batchsize, num_channels, height, width = x.data.size()
 
-    channels_per_group = num_channels // groups
 
-    # reshape
-    x = x.view(batchsize, groups, channels_per_group, height, width)
-
-    x = torch.transpose(x, 1, 2).contiguous()
-
-    # flatten
-    x = x.view(batchsize, -1, height, width)
-
-    return x

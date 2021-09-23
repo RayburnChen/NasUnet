@@ -11,35 +11,37 @@ OPS = {
     'avg_pool': lambda c_in, c_ot, op_type, dp: build_ops('avg_pool', op_type),
     'max_pool': lambda c_in, c_ot, op_type, dp: build_ops('max_pool', op_type),
 
-    'cweight': lambda c_in, c_ot, op_type, dp: build_ops('cweight', op_type, c_in, c_ot, dp=dp),
-    'dep_conv': lambda c_in, c_ot, op_type, dp: build_ops('dep_conv', op_type, c_in, c_ot, dp=dp),
     'conv': lambda c_in, c_ot, op_type, dp: build_ops('conv', op_type, c_in, c_ot, dp=dp),
-    'dil_conv': lambda c_in, c_ot, op_type, dp: build_ops('dil_conv', op_type, c_in, c_ot, dp=dp),
+    'dil_conv_2': lambda c_in, c_ot, op_type, dp: build_ops('dil_conv_2', op_type, c_in, c_ot, dp=dp),
+    'dil_conv_3': lambda c_in, c_ot, op_type, dp: build_ops('dil_conv_3', op_type, c_in, c_ot, dp=dp),
+    'se_conv': lambda c_in, c_ot, op_type, dp: build_ops('se_conv', op_type, c_in, c_ot, dp=dp),
 }
 
 DownOps = [
-    'avg_pool',
+    # 'avg_pool',
     'max_pool',
-    'cweight',
-    'dil_conv',
-    'dep_conv',
     'conv',
+    'dil_conv_2',
+    'dil_conv_3',
+    'se_conv',
 ]
 
 UpOps = [
-    'cweight',
-    'dep_conv',
     'conv',
-    'dil_conv',
+    'dil_conv_2',
+    'dil_conv_3',
+    'se_conv',
 ]
 
 NormOps = [
+    # 'avg_pool',
+    # 'max_pool',
     'identity',
     'none',
-    'cweight',
-    'dil_conv',
-    'dep_conv',
     'conv',
+    'dil_conv_2',
+    'dil_conv_3',
+    'se_conv',
 ]
 
 
@@ -57,215 +59,69 @@ def build_ops(op_name, op_type: OpType, c_in: Optional[int] = None, c_ot: Option
         return nn.AvgPool2d(3, stride=stride, padding=1, count_include_pad=False)
     elif op_name == 'max_pool':
         return nn.MaxPool2d(3, stride=stride, padding=1)
-    elif op_name == 'cweight':
-        return CWeightOp(c_in, c_ot, stride=stride, use_transpose=use_transpose, output_padding=output_padding,
-                         dropout_rate=dp)
-    elif op_name == 'dep_conv':
-        return ConvOps(c_in, c_ot, stride=stride, use_transpose=use_transpose, output_padding=output_padding,
-                       use_depthwise=True, dropout_rate=dp)
     elif op_name == 'conv':
-        return ConvOps(c_in, c_ot, stride=stride, use_transpose=use_transpose, output_padding=output_padding,
-                       dropout_rate=dp)
-    elif op_name == 'dil_conv':
-        return ConvOps(c_in, c_ot, stride=stride, use_transpose=use_transpose, output_padding=output_padding,
-                       dilation=2, dropout_rate=dp)
+        return ConvGnReLU(c_in, c_ot, stride=stride, transpose=use_transpose, output_padding=output_padding, dropout=dp)
+    elif op_name == 'se_conv':
+        return ConvGnSeReLU(c_in, c_ot, stride=stride, transpose=use_transpose, output_padding=output_padding, dropout=dp)
+    elif op_name == 'dil_conv_2':
+        return ConvGnReLU(c_in, c_ot, stride=stride, transpose=use_transpose, output_padding=output_padding, dilation=2, dropout=dp)
+    elif op_name == 'dil_conv_3':
+        return ConvGnReLU(c_in, c_ot, stride=stride, transpose=use_transpose, output_padding=output_padding, dilation=3, dropout=dp)
+    else:
+        raise NotImplementedError()
 
 
-class BaseOp(nn.Module):
+class Conv(nn.Sequential):
 
-    def __init__(self, in_channels, out_channels, norm_type='gn', affine=True, act_func='relu', dropout_rate=0, ops_order='weight_norm_act'):
-        super(BaseOp, self).__init__()
-
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-
-        self.act_func = act_func
-        self.dropout_rate = dropout_rate
-        self.ops_order = ops_order
-        self.norm_type = norm_type
-        self.c = 16
-        self.affine = affine
-
-        self.norm = None
-        self.activation = None
-        self.dropout = None
-
-        # batch norm, group norm, instance norm, layer norm
-        if 'norm' in self.ops_list:
-            self.build_norm()
-
-        # activation
-        if 'act' in self.ops_list:
-            self.build_act()
-
-        # dropout
-        if self.dropout_rate > 0:
-            self.dropout = nn.Dropout2d(self.dropout_rate, inplace=False)
-
-    @property
-    def ops_list(self):
-        return self.ops_order.split('_')
-
-    @property
-    def norm_before_weight(self):
-        for op in self.ops_list:
-            if op == 'norm':
-                return True
-            elif op == 'weight':
-                return False
-        raise ValueError('Invalid ops_order: %s' % self.ops_order)
-
-    def build_norm(self):
-        # Ref: <Group Normalization> https://arxiv.org/abs/1803.08494
-        # 16 channels for one group is best
-        if self.norm_before_weight:
-            group = 1 if (self.in_channels % self.c > 0) else 0
-            group += self.in_channels // self.c
-            if self.norm_type == 'gn':
-                self.norm = nn.GroupNorm(group, self.in_channels, affine=self.affine)
-            else:
-                self.norm = nn.BatchNorm2d(self.in_channels, affine=self.affine)
-        else:
-            group = 1 if (self.out_channels % self.c > 0) else 0
-            group += self.out_channels // self.c
-            if self.norm_type == 'gn':
-                self.norm = nn.GroupNorm(group, self.out_channels, affine=self.affine)
-            else:
-                self.norm = nn.BatchNorm2d(self.out_channels, affine=self.affine)
-
-    def build_act(self):
-        if self.act_func == 'relu':
-            self.activation = nn.ReLU(inplace=True)
-        elif self.act_func == 'relu6':
-            self.activation = nn.ReLU6(inplace=True)
-
-    def weight_call(self, x):
-        raise NotImplementedError
-
-    def forward(self, x):
-        for op in self.ops_list:
-            if op == 'weight':
-                # dropout before weight operation
-                if self.dropout is not None:
-                    x = self.dropout(x)
-                x = self.weight_call(x)
-            elif op == 'norm':
-                if self.norm is not None:
-                    x = self.norm(x)
-            elif op == 'act':
-                if self.activation is not None:
-                    x = self.activation(x)
-            else:
-                raise ValueError('Unrecognized op: %s' % op)
-        return x
+    def __init__(self, c_in, c_ot, kernel_size=3, stride=1, dilation=1, transpose=False, output_padding=0, dropout=0):
+        conv = build_weight(c_in, c_ot, kernel_size, stride, dilation, transpose, output_padding, dropout)
+        super().__init__(*conv)
 
 
-class ConvOps(BaseOp):
+class ConvGnReLU(nn.Sequential):
 
-    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, dilation=1, groups=1,
-                 bias=False, use_transpose=False, output_padding=0, use_depthwise=False,
-                 norm_type='gn', affine=True, act_func='relu', dropout_rate=0,
-                 ops_order='weight_norm_act'):
-        super(ConvOps, self).__init__(in_channels, out_channels, norm_type, affine, act_func, dropout_rate, ops_order)
-
-        self.kernel_size = kernel_size
-        self.stride = stride
-        self.dilation = dilation
-        self.groups = groups
-        self.bias = bias
-        self.use_transpose = use_transpose
-        self.use_depthwise = use_depthwise
-        self.output_padding = output_padding
-
-        padding = get_same_padding(self.kernel_size)
-        if isinstance(padding, int):
-            padding *= self.dilation
-        else:
-            padding[0] *= self.dilation
-            padding[1] *= self.dilation
-
-        # 'kernel_size', 'stride', 'padding', 'dilation' can either be 'int' or 'tuple' of int
-        if use_transpose:
-            if use_depthwise:  # 1. transpose depth-wise conv
-                self.depth_conv = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=self.kernel_size,
-                                                     stride=self.stride, padding=padding,
-                                                     output_padding=self.output_padding, groups=in_channels,
-                                                     bias=self.bias)  # output_padding 1
-                self.point_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1, groups=self.groups, bias=False)
-            else:  # 2. transpose conv
-                self.conv = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=self.kernel_size,
-                                               stride=self.stride, padding=padding,
-                                               output_padding=self.output_padding, dilation=self.dilation,
-                                               bias=self.bias)  # padding 3 output_padding 1
-        else:
-            if use_depthwise:  # 3. depth-wise conv
-                self.depth_conv = nn.Conv2d(in_channels, in_channels, kernel_size=self.kernel_size,
-                                            stride=self.stride, padding=padding,
-                                            dilation=self.dilation, groups=in_channels, bias=False)
-                self.point_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1,
-                                            groups=self.groups, bias=False)
-            else:  # 4. conv
-                self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=self.kernel_size,
-                                      stride=self.stride, padding=padding,
-                                      dilation=self.dilation, bias=False)
-
-    def weight_call(self, x):
-        if self.use_depthwise:
-            x = self.depth_conv(x)
-            x = self.point_conv(x)
-        else:
-            x = self.conv(x)
-        return x
+    def __init__(self, c_in, c_ot, kernel_size=3, stride=1, dilation=1, transpose=False, output_padding=0,
+                 affine=True, dropout=0):
+        conv = build_weight(c_in, c_ot, kernel_size, stride, dilation, transpose, output_padding, dropout)
+        norm = build_norm(c_ot, affine)
+        act = build_activation()
+        super().__init__(*conv, norm, act)
 
 
-class CWeightOp(BaseOp):
+class ConvGnSeReLU(nn.Sequential):
+    def __init__(self, c_in, c_ot, kernel_size=3, stride=1, dilation=1, transpose=False, output_padding=0,
+                 affine=True, dropout=0):
+        conv = build_weight(c_in, c_ot, kernel_size, stride, dilation, transpose, output_padding, dropout)
+        norm = build_norm(c_ot, affine)
+        se = SEBlock(c_ot)
+        act = build_activation()
+        super().__init__(*conv, norm, se, act)
 
-    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, dilation=1, groups=None,
-                 bias=False, use_transpose=False, output_padding=0, norm_type='gn', affine=True, act_func='relu', dropout_rate=0, ops_order='weight_act'):
-        super(CWeightOp, self).__init__(in_channels, out_channels, norm_type, affine, act_func, dropout_rate, ops_order)
 
-        self.kernel_size = kernel_size
-        self.stride = stride
-        self.dilation = dilation
-        self.groups = groups
-        self.bias = bias
-        self.use_transpose = use_transpose
-        self.output_padding = output_padding
+def build_weight(c_in, c_ot, kernel_size, stride, dilation, use_transpose, output_padding, dropout_rate):
+    padding = get_same_padding(kernel_size)
+    padding *= dilation
+    ops = []
+    if dropout_rate > 0:
+        ops.append(nn.Dropout2d(dropout_rate, inplace=False))
+    if use_transpose:
+        ops.append(nn.ConvTranspose2d(c_in, c_ot, kernel_size=kernel_size, stride=stride, padding=padding,
+                                      dilation=dilation, bias=False, output_padding=output_padding))
+    else:
+        ops.append(nn.Conv2d(c_in, c_ot, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation,
+                             bias=False))
+    return ops
 
-        padding = get_same_padding(self.kernel_size)
-        if isinstance(padding, int):
-            padding *= self.dilation
-        else:
-            padding[0] *= self.dilation
-            padding[1] *= self.dilation
 
-        # `kernel_size`, `stride`, `padding`, `dilation`
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.fc = nn.Sequential(
-            nn.Linear(in_channels, 1 if in_channels < 16 else in_channels // 16),
-            nn.ReLU(inplace=True),
-            nn.Linear(1 if in_channels < 16 else in_channels // 16, out_channels),
-            nn.Sigmoid()
-        )
-        if stride >= 2:
-            if use_transpose:
-                self.conv = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=self.kernel_size,
-                                               stride=self.stride, padding=padding, output_padding=self.output_padding,
-                                               # output_padding 1
-                                               bias=False)
-            else:
-                self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size,
-                                      stride=stride, padding=padding, bias=False)
-            group = 1 if (out_channels % 16 > 0) else 0
-            group += out_channels // 16
-            self.norm = nn.GroupNorm(group, out_channels, affine=affine)
+def build_norm(c_ot, affine):
+    c_per_g = 16
+    group = 1 if (c_ot % c_per_g > 0) else 0
+    group += c_ot // c_per_g
+    return nn.GroupNorm(group, c_ot, affine=affine)
 
-    def weight_call(self, x):
-        b, c, _, _ = x.size()
-        y = self.avg_pool(x).view(b, c)
-        y = self.fc(y).view(b, c, 1, 1)
-        rst = self.norm(self.conv(x * y)) if self.stride >= 2 else x * y
-        return rst
+
+def build_activation():
+    return nn.ReLU(inplace=True)
 
 
 class ZeroOp(nn.Module):
@@ -278,3 +134,240 @@ class ZeroOp(nn.Module):
         if self.stride == 1:
             return x.mul(0.)
         return x[:, :, ::self.stride, ::self.stride].mul(0.)
+
+
+class SEBlock(nn.Module):
+    # credits: https://github.com/moskomule/senet.pytorch/blob/master/senet/se_module.py#L4
+    def __init__(self, c, r=16):
+        super().__init__()
+        self.mid = c // r if c > r else 1
+        self.squeeze = nn.AdaptiveAvgPool2d(1)
+        self.excitation = nn.Sequential(
+            nn.Linear(c, self.mid, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(self.mid, c, bias=False),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        bs, c, _, _ = x.shape
+        y = self.squeeze(x).view(bs, c)
+        y = self.excitation(y).view(bs, c, 1, 1)
+        return x * y.expand_as(x)
+
+# class BaseOp(nn.Module):
+#
+#     def __init__(self, c_in, c_ot, norm_type='gn', affine=True, act_func='relu', dropout_rate=0,
+#                  ops_order='weight_norm_act'):
+#         super(BaseOp, self).__init__()
+#
+#         self.c_in = c_in
+#         self.c_ot = c_ot
+#
+#         self.act_func = act_func
+#         self.dropout_rate = dropout_rate
+#         self.ops_order = ops_order
+#         self.norm_type = norm_type
+#         self.c = 16
+#         self.affine = affine
+#
+#         self.weight = None
+#         self.norm = None
+#         self.activation = None
+#         self.dropout = None
+#         self.seq = None
+#
+#     @property
+#     def ops_list(self):
+#         return self.ops_order.split('_')
+#
+#     @property
+#     def norm_before_weight(self):
+#         for op in self.ops_list:
+#             if op == 'norm':
+#                 return True
+#             elif op == 'weight':
+#                 return False
+#         raise ValueError('Invalid ops_order: %s' % self.ops_order)
+#
+#     def build_weight(self):
+#         raise NotImplementedError()
+#
+#     def build_norm(self):
+#         # Ref: <Group Normalization> https://arxiv.org/abs/1803.08494
+#         # 16 channels for one group is best
+#         if self.norm_before_weight:
+#             group = 1 if (self.c_in % self.c > 0) else 0
+#             group += self.c_in // self.c
+#             if self.norm_type == 'gn':
+#                 self.norm = nn.GroupNorm(group, self.c_in, affine=self.affine)
+#             else:
+#                 self.norm = nn.BatchNorm2d(self.c_in, affine=self.affine)
+#         else:
+#             group = 1 if (self.c_ot % self.c > 0) else 0
+#             group += self.c_ot // self.c
+#             if self.norm_type == 'gn':
+#                 self.norm = nn.GroupNorm(group, self.c_ot, affine=self.affine)
+#             else:
+#                 self.norm = nn.BatchNorm2d(self.c_ot, affine=self.affine)
+#
+#     def build_act(self):
+#         if self.act_func == 'relu':
+#             self.activation = nn.ReLU(inplace=True)
+#         elif self.act_func == 'relu6':
+#             self.activation = nn.ReLU6(inplace=True)
+#
+#     def build_dropout(self):
+#         if self.dropout_rate > 0:
+#             self.dropout = nn.Dropout2d(self.dropout_rate, inplace=False)
+#
+#     def build_seq(self):
+#         ops = []
+#         for op in self.ops_list:
+#             if op == 'weight' and len(self.weight):
+#                 # dropout before weight operation
+#                 if self.dropout is not None:
+#                     ops.append(self.dropout)
+#                 ops.extend(self.weight)
+#             elif op == 'norm' and self.norm is not None:
+#                 ops.append(self.norm)
+#             elif op == 'act' and self.activation is not None:
+#                 ops.append(self.activation)
+#             else:
+#                 raise ValueError('Unrecognized op: %s' % op)
+#         self.seq = nn.Sequential(*ops)
+#
+#     def forward(self, x):
+#         return self.seq(x)
+
+
+# class ConvOps(BaseOp):
+#
+#     def __init__(self, c_in, c_ot, kernel_size=3, stride=1, dilation=1, groups=1,
+#                  use_transpose=False, output_padding=0, norm_type='gn', affine=True, act_func='relu',
+#                  dropout_rate=0,
+#                  ops_order='weight_norm_act'):
+#         super(ConvOps, self).__init__(c_in, c_ot, norm_type, affine, act_func, dropout_rate, ops_order)
+#
+#         self.kernel_size = kernel_size
+#         self.stride = stride
+#         self.dilation = dilation
+#         self.groups = groups
+#         self.use_transpose = use_transpose
+#         self.output_padding = output_padding
+#
+#         padding = get_same_padding(self.kernel_size)
+#         padding *= self.dilation
+#         self.padding = padding
+#
+#         if use_transpose:
+#             self.conv = nn.ConvTranspose2d(c_in, c_ot, kernel_size=self.kernel_size, stride=self.stride,
+#                                            padding=padding, dilation=self.dilation, bias=False,
+#                                            output_padding=self.output_padding)
+#         else:
+#             self.conv = nn.Conv2d(c_in, c_ot, kernel_size=self.kernel_size, stride=self.stride, padding=padding,
+#                                   dilation=self.dilation, bias=False)
+#
+#     def build_weight(self):
+#         self.weight = [self.conv]
+#
+#     def build(self):
+#         self.build_norm()
+#         self.build_act()
+#         super().build()
+
+
+# class SeConvOps(ConvOps):
+#
+#     def __init__(self, c_in, c_ot, kernel_size=3, stride=1, dilation=1, groups=1, use_transpose=False, output_padding=0,
+#                  norm_type='gn', affine=True, act_func='relu', dropout_rate=0, ops_order='weight_norm_act'):
+#         super(SeConvOps, self).__init__(c_in, c_ot, kernel_size, stride, dilation, groups, use_transpose, output_padding, norm_type, affine, act_func, dropout_rate, ops_order)
+#         self.weight = [self.conv, SEBlock(c_ot)]
+#         super().build()
+
+
+# class CWeightOp(BaseOp):
+#
+#     def __init__(self, c_in, c_ot, kernel_size=3, stride=1, dilation=1, groups=None,
+#                  bias=False, use_transpose=False, output_padding=0, norm_type='gn', affine=True, act_func='relu',
+#                  dropout_rate=0, ops_order='weight_act'):
+#         super(CWeightOp, self).__init__(c_in, c_ot, norm_type, affine, act_func, dropout_rate, ops_order)
+#
+#         self.kernel_size = kernel_size
+#         self.stride = stride
+#         self.dilation = dilation
+#         self.groups = groups
+#         self.bias = bias
+#         self.use_transpose = use_transpose
+#         self.output_padding = output_padding
+#
+#         padding = get_same_padding(self.kernel_size)
+#         if isinstance(padding, int):
+#             padding *= self.dilation
+#         else:
+#             padding[0] *= self.dilation
+#             padding[1] *= self.dilation
+#
+#         self.avg_pool = nn.AdaptiveAvgPool2d(1)
+#         self.fc = nn.Sequential(
+#             nn.Linear(c_in, 1 if c_in < 16 else c_in // 16),
+#             nn.ReLU(inplace=True),
+#             nn.Linear(1 if c_in < 16 else c_in // 16, c_ot),
+#             nn.Sigmoid()
+#         )
+#         if stride >= 2:
+#             if use_transpose:
+#                 self.conv = nn.ConvTranspose2d(c_in, c_ot, kernel_size=self.kernel_size, stride=self.stride,
+#                                                padding=padding, bias=False, output_padding=self.output_padding)
+#             else:
+#                 self.conv = nn.Conv2d(c_in, c_ot, kernel_size=kernel_size, stride=stride, padding=padding, bias=False)
+#             group = 1 if (c_ot % 16 > 0) else 0
+#             group += c_ot // 16
+#             self.norm = nn.GroupNorm(group, c_ot, affine=affine)
+#
+#     def forward(self, x):
+#         b, c, _, _ = x.size()
+#         y = self.avg_pool(x).view(b, c)
+#         y = self.fc(y).view(b, c, 1, 1)
+#         rst = self.norm(self.conv(x * y)) if self.stride >= 2 else x * y
+#         rst = self.activation(rst)
+#         return rst
+
+
+# class ShuffleConv(nn.Module):
+#     def __init__(self, in_channels, out_channels, stride, dropout_rate):
+#         super(ShuffleConv, self).__init__()
+#         self.dropout_rate = dropout_rate
+#         self.stride = stride
+#         g = 1 if (out_channels % 16 > 0) else 0
+#         g += out_channels // 16
+#         self.g = g
+#
+#         mid_channels = out_channels // 4
+#
+#         self.conv1 = nn.Conv2d(in_channels, mid_channels, kernel_size=1, groups=g, bias=False)
+#         self.bn1 = nn.BatchNorm2d(mid_channels)
+#         self.relu1 = nn.ReLU(inplace=True)
+#
+#         self.conv2 = nn.Conv2d(mid_channels, mid_channels, kernel_size=3, stride=stride, padding=1, groups=mid_channels, bias=False)
+#         self.bn2 = nn.BatchNorm2d(mid_channels)
+#         self.relu2 = nn.ReLU(inplace=True)
+#
+#         self.conv3 = nn.Conv2d(mid_channels, out_channels, kernel_size=1, groups=g, bias=False)
+#         self.bn3 = nn.BatchNorm2d(out_channels)
+#         self.relu3 = nn.ReLU(inplace=True)
+#
+#         if stride > 1:
+#             self.down_sample = nn.AvgPool2d(3, stride=stride, padding=1)
+#
+#     def forward(self, x):
+#         out = self.relu1(self.bn1(self.conv1(x)))
+#         out = channel_shuffle(out, self.g)
+#         out = self.relu2(self.bn2(self.conv2(out)))
+#         out = self.bn3(self.conv3(out))
+#         if self.stride > 1:
+#             res = self.down_sample(x)
+#         else:
+#             res = x
+#         out = self.relu3(out + res)
+#         return out
