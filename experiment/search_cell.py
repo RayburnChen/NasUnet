@@ -251,7 +251,7 @@ class SearchNetwork(object):
         self.model.train()
         tbar = tqdm(self.train_queue)
         for step, (input, target) in enumerate(tbar):
-            # self.logger.info('GPU memory total:{}, reserved:{}, allocated:{}, waiting:{}'.format(*gpu_memory()))
+
             input = input.to(self.device)
             target = target.to(self.device)
 
@@ -268,6 +268,8 @@ class SearchNetwork(object):
 
             self.model_optimizer.zero_grad()
             predicts = self.model(input)
+
+            # self.logger.info('GPU memory total:{}, reserved:{}, allocated:{}, waiting:{}'.format(*gpu_memory()))
 
             train_loss = self.criterion(predicts, target)
 
