@@ -60,13 +60,18 @@ class Cell(nn.Module):
         if self._cell_type == 'down':
             # Note: the s0 size is twice than s1!
             # self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, ops_order='weight_norm')
-            self.preprocess0 = nn.MaxPool2d(3, stride=2, padding=1)  # suppose c_in0 == c
+            # self.preprocess0 = nn.MaxPool2d(3, stride=2, padding=1)  # suppose c_in0 == c
+            self.preprocess0 = nn.Sequential(nn.MaxPool2d(3, stride=2, padding=1), ShrinkBlock(c_in0, c, k=1))
         else:
-            self.preprocess0 = ConvGnReLU(c_in0, c, kernel_size=3)
+            # self.preprocess0 = ConvGnReLU(c_in0, c, kernel_size=3)
+            self.preprocess0 = ShrinkBlock(c_in0, c, k=1)
         # self.preprocess1 = ConvOps(c_in1, c, kernel_size=1, ops_order='weight_norm_act')
-        self.preprocess1 = nn.Identity()  # suppose c_in1 == c
+        # self.preprocess1 = nn.Identity()  # suppose c_in1 == c
+        self.preprocess1 = ShrinkBlock(c_in1, c, k=1)
+        self.c_part = self.preprocess1.c_part
 
-        self.post_process = ConvGnReLU(c * self._meta_node_num, c, kernel_size=3)
+        # self.post_process = ConvGnReLU(c * self._meta_node_num, c, kernel_size=3)
+        self.post_process = ExpandBlock(self.c_part * self._meta_node_num, c, cell_type=cell_type)
 
         self._ops = nn.ModuleList()
 
@@ -82,21 +87,21 @@ class Cell(nn.Module):
                 # up cell:   |*|_|*|*|_|*|_|*|*| where _ indicate up operation
                 if idx_start <= j < 2:
                     if self._cell_type == 'up':
-                        op = MixedOp(c, op_type=OpType.UP)
+                        op = MixedOp(self.c_part, op_type=OpType.UP)
                     else:
-                        op = MixedOp(c, op_type=OpType.DOWN)
+                        op = MixedOp(self.c_part, op_type=OpType.DOWN)
                 else:
-                    op = MixedOp(c, op_type=OpType.NORM)
+                    op = MixedOp(self.c_part, op_type=OpType.NORM)
 
                 self._ops.append(op)
 
-    def forward(self, s0, s1, weights_norm, weights_chg, betas):
+    def forward(self, in0, in1, weights_norm, weights_chg, betas):
         # weight1: the normal operations weights with sharing
         # weight2: the down or up operations weight, respectively
 
         # the cell output is concatenate, so need a convolution to learn best combination
-        s0 = self.preprocess0(s0)
-        s1 = self.preprocess1(s1)
+        s0 = self.preprocess0(in0)
+        s1 = self.preprocess1(in1)
         states = [s0, s1]
         offset = 0
 
@@ -115,7 +120,7 @@ class Cell(nn.Module):
             offset += len(states)
             states.append(s)
 
-        return self.post_process(torch.cat(states[-self._multiplier:], dim=1))
+        return self.post_process(torch.cat(states[-self._multiplier:], dim=1), in1)
 
 
 

@@ -10,13 +10,12 @@ OPS = {
     'identity': lambda c_in, c_ot, op_type, dp: nn.Identity(),
     'avg_pool': lambda c_in, c_ot, op_type, dp: build_ops('avg_pool', op_type),
     'max_pool': lambda c_in, c_ot, op_type, dp: build_ops('max_pool', op_type),
+    'up_sample': lambda c_in, c_ot, op_type, dp: nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
 
     'conv': lambda c_in, c_ot, op_type, dp: build_ops('conv', op_type, c_in, c_ot, dp=dp),
     'dil_conv_2': lambda c_in, c_ot, op_type, dp: build_ops('dil_conv_2', op_type, c_in, c_ot, dp=dp),
     'dil_conv_3': lambda c_in, c_ot, op_type, dp: build_ops('dil_conv_3', op_type, c_in, c_ot, dp=dp),
     'se_conv': lambda c_in, c_ot, op_type, dp: build_ops('se_conv', op_type, c_in, c_ot, dp=dp),
-
-    'up_sample': lambda c_in, c_ot, op_type, dp: nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
 }
 
 DownOps = [
@@ -159,94 +158,52 @@ class SEBlock(nn.Module):
         return x * y.expand_as(x)
 
 
-class PartialConvGnReLU(nn.Module):
+class ShrinkBlock(nn.Module):
 
-    def __init__(self, c_in, c_ot, kernel_size=3, stride=1, dilation=1, transpose=False, output_padding=0,
-                 affine=True, dropout=0, op_type=OpType.NORM):
+    def __init__(self, c_in, c_ot, k=2):
         super().__init__()
-
-        k = 4
+        self.k = k
         g = 1 if (c_ot % 16 > 0) else 0
         g += c_ot // 16
         self.g = g
-        c_part = c_ot // k
-        self.stride = stride
+        self.c_part = c_ot // self.k
 
-        self.conv1 = nn.Conv2d(c_in, c_part, kernel_size=1, groups=g, bias=False)
-        self.bn1 = nn.BatchNorm2d(c_part)
-        self.relu1 = nn.ReLU(inplace=True)
-
-        # self.conv2 = nn.Conv2d(c_part, c_part, kernel_size=3, stride=stride, padding=1, groups=c_part, bias=False)
-        self.conv2 = build_weight(c_part, c_part, kernel_size, stride, dilation, transpose, output_padding, dropout, groups=c_part)[-1]
-        self.bn2 = nn.BatchNorm2d(c_part)
-        self.relu2 = nn.ReLU(inplace=True)
-
-        self.conv3 = nn.Conv2d(c_part, c_ot, kernel_size=1, groups=g, bias=False)
-        self.bn3 = nn.BatchNorm2d(c_ot)
-        self.relu3 = nn.ReLU(inplace=True)
-
-        if self.stride > 1:
-            if op_type == OpType.DOWN:
-                self.skip_path = nn.AvgPool2d(3, stride=stride, padding=1)
-            else:
-                self.skip_path = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
+        self.conv = nn.Conv2d(c_in, self.c_part, kernel_size=1, groups=self.g, bias=False)
+        self.bn = nn.BatchNorm2d(self.c_part)
+        self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x):
-        out = self.relu1(self.bn1(self.conv1(x)))
-        out = channel_shuffle(out, self.g)
-        out = self.relu2(self.bn2(self.conv2(out)))
-        out = self.bn3(self.conv3(out))
-        if self.stride > 1:
-            res = self.skip_path(x)
-        else:
-            res = x
-        out = self.relu3(out + res)
-        return out
+        out = self.conv(x)
+        out = self.bn(out)
+        out = self.relu(out)
+        return channel_shuffle(out, self.g)
 
 
-class PartialConvGnSeReLU(nn.Module):
+class ExpandBlock(nn.Module):
 
-    def __init__(self, c_in, c_ot, kernel_size=3, stride=1, dilation=1, transpose=False, output_padding=0,
-                 affine=True, dropout=0, op_type=OpType.NORM):
+    def __init__(self, c_part, c_ot, cell_type='down'):
         super().__init__()
-
-        k = 4
         g = 1 if (c_ot % 16 > 0) else 0
         g += c_ot // 16
         self.g = g
-        c_part = c_ot // k
-        self.stride = stride
+        self.cell_type = cell_type
 
-        self.conv1 = nn.Conv2d(c_in, c_part, kernel_size=1, groups=g, bias=False)
-        self.bn1 = nn.BatchNorm2d(c_part)
-        self.relu1 = nn.ReLU(inplace=True)
+        self.conv = nn.Conv2d(c_part, c_ot, kernel_size=3, padding=1, groups=self.g, bias=False)
+        self.bn = nn.BatchNorm2d(c_ot)
+        self.relu = nn.ReLU(inplace=True)
 
-        # self.conv2 = nn.Conv2d(c_part, c_part, kernel_size=3, stride=stride, padding=1, groups=c_part, bias=False)
-        self.conv2 = build_weight(c_part, c_part, kernel_size, stride, dilation, transpose, output_padding, dropout, groups=c_part)[-1]
-        self.bn2 = nn.BatchNorm2d(c_part)
-        self.relu2 = nn.ReLU(inplace=True)
-
-        self.conv3 = nn.Conv2d(c_part, c_ot, kernel_size=1, groups=g, bias=False)
-        self.bn3 = nn.BatchNorm2d(c_ot)
-        self.relu3 = nn.ReLU(inplace=True)
-
-        self.se = SEBlock(c_ot)
-
-        if self.stride > 1:
-            if op_type == OpType.DOWN:
-                self.skip_path = nn.AvgPool2d(3, stride=stride, padding=1)
-            else:
-                self.skip_path = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
-
-    def forward(self, x):
-        out = self.relu1(self.bn1(self.conv1(x)))
-        out = channel_shuffle(out, self.g)
-        out = self.relu2(self.bn2(self.conv2(out)))
-        out = self.bn3(self.conv3(out))
-        out = self.se(out)
-        if self.stride > 1:
-            res = self.skip_path(x)
+        if self.cell_type == 'up':
+            self.skip_path = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
         else:
-            res = x
-        out = self.relu3(out + res)
+            self.skip_path = nn.AvgPool2d(3, stride=2, padding=1)
+
+    def forward(self, x, residual):
+        out = self.conv(x)
+        out = self.bn(out)
+        # out = self.relu(out)
+        out = self.relu(out + self.skip_path(residual))
         return out
+
+
+
+

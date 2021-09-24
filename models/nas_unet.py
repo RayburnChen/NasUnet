@@ -13,11 +13,15 @@ class BuildCell(nn.Module):
         if cell_type == 'down':
             # Note: the s0 size is twice than s1!
             # self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, ops_order='weight_norm')
-            self.preprocess0 = nn.MaxPool2d(3, stride=2, padding=1)  # suppose c_in0 == c
+            # self.preprocess0 = nn.MaxPool2d(3, stride=2, padding=1)  # suppose c_in0 == c
+            self.preprocess0 = nn.Sequential(nn.MaxPool2d(3, stride=2, padding=1), ShrinkBlock(c_in0, c))
         else:
-            self.preprocess0 = ConvGnReLU(c_in0, c, kernel_size=3)
+            # self.preprocess0 = ConvGnReLU(c_in0, c, kernel_size=3)
+            self.preprocess0 = ShrinkBlock(c_in0, c)
         # self.preprocess1 = ConvOps(c_in1, c, kernel_size=1, ops_order='weight_norm')
-        self.preprocess1 = nn.Identity()  # suppose c_in1 == c
+        # self.preprocess1 = nn.Identity()  # suppose c_in1 == c
+        self.preprocess1 = ShrinkBlock(c_in1, c)
+        self.c_part = self.preprocess1.c_part
 
         if cell_type == 'up':
             op_names, idx = zip(*genotype.up)
@@ -26,9 +30,11 @@ class BuildCell(nn.Module):
             op_names, idx = zip(*genotype.down)
             concat = genotype.down_concat
 
-        self.post_process = ConvGnReLU(c * len(concat), c, kernel_size=3)
+        # self.post_process = ConvGnReLU(c * len(concat), c, kernel_size=3)
+        # self.post_process = ConvGnReLU(self.c_part * len(concat), c, kernel_size=3)
+        self.post_process = ExpandBlock(self.c_part * len(concat), c, cell_type=cell_type)
         self.dropout_prob = dropout_prob
-        self._compile(c, cell_type, op_names, idx, concat)
+        self._compile(self.c_part, cell_type, op_names, idx, concat)
 
     def _compile(self, c, cell_type, op_names, idx, concat):
         assert len(op_names) == len(idx)
@@ -49,9 +55,9 @@ class BuildCell(nn.Module):
             self._ops += [op]
         self._indices = idx
 
-    def forward(self, s0, s1):
-        s0 = self.preprocess0(s0)
-        s1 = self.preprocess1(s1)
+    def forward(self, in0, in1):
+        s0 = self.preprocess0(in0)
+        s1 = self.preprocess1(in1)
 
         states = [s0, s1]
         for i in range(self._num_meta_node):
@@ -64,7 +70,7 @@ class BuildCell(nn.Module):
             s = h1 + h2
             states += [s]
 
-        return self.post_process(torch.cat([states[i] for i in self._concat], dim=1))
+        return self.post_process(torch.cat([states[i] for i in self._concat], dim=1), in1)
 
 
 class Head(nn.Module):
