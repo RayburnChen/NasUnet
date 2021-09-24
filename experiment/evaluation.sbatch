@@ -69,9 +69,9 @@ python -V
 #conda install --file requirements.txt
 
 sleep 5
-python ./train.py --config ../configs/nas_unet/nas_unet_monusac.yml --model nasunet --ft --loss dice_ce --depth 5 --genotype "Genotype(down=[('down_dil_conv', 0), ('down_dil_conv', 1), ('down_dil_conv', 1), ('dil_conv', 2), ('dil_conv', 2), ('dil_conv', 3), ('dil_conv', 3), ('dil_conv', 2)], down_concat=range(2, 6), up=[('dil_conv', 0), ('up_dil_conv', 1), ('dil_conv', 0), ('dil_conv', 2), ('shuffle_conv', 2), ('dil_conv', 3), ('shuffle_conv', 3), ('dil_conv', 0)], up_concat=range(2, 6), gamma=[0, 0, 0, 0, 0, 0])"
+#python ./train.py --config ../configs/nas_unet/nas_unet_chaos.yml --model nasunet --ft --loss dice_ce --depth 5 --genotype "Genotype(down=[('dil_conv_3', 0), ('dil_conv_3', 1), ('se_conv', 0), ('dil_conv_3', 1)], down_concat=range(2, 4), up=[('dil_conv_2', 0), ('dil_conv_2', 1), ('dil_conv_3', 0), ('dil_conv_3', 2)], up_concat=range(2, 4), gamma=[1, 1, 1, 0, 0, 0])"
 #python ./train.py --config ../configs/nas_unet/nas_unet_monusac.yml --model nasunet --loss dice_ce --batch_size 14
-#python ./train.py --config ../configs/nas_unet/nas_unet_promise12.yml --model nasunet --loss dice_ce
+python ./train.py --config ../configs/nas_unet/nas_unet_monusac.yml --model unet_plus_plus --loss dice_ce
 
 nvidia-smi
 # deviceQuery

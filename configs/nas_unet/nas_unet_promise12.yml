@@ -11,6 +11,7 @@ searching:
     init_channels: 32
     depth: 5
     epoch: 1000
+#    batch_size: 20
     batch_size: 12
 #    batch_size: 3
     report_freq: 10
@@ -22,7 +23,7 @@ searching:
     sharing_normal: False
     double_down_channel: False
     deep_supervision: False
-    meta_node_num: 2
+    meta_node_num: 3
     grad_clip: 5
     train_portion: 0.5
     model_optimizer:

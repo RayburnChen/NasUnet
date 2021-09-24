@@ -11,8 +11,6 @@ import torch.nn as nn
 from torch.utils import data
 import torch.backends.cudnn as cudnn
 
-from util.gpu_memory_log import gpu_memory_log
-
 sys.path.append('..')
 from util.loss.loss import SegmentationLosses, MultiSegmentationLosses
 from util.datasets import get_dataset
@@ -26,6 +24,7 @@ from util.metrics import *
 from models import get_segmentation_model
 import models.geno_searched as geno_types
 from util import genotype
+from util.gpu_memory_log import gpu_memory_log
 from tensorboardX import SummaryWriter
 
 

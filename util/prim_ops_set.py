@@ -63,13 +63,13 @@ def build_ops(op_name, op_type: OpType, c_in: Optional[int] = None, c_ot: Option
     elif op_name == 'max_pool':
         return nn.MaxPool2d(3, stride=stride, padding=1)
     elif op_name == 'conv':
-        return PartialConvGnReLU(c_in, c_ot, stride=stride, transpose=use_transpose, output_padding=output_padding, dropout=dp, op_type=op_type)
+        return ConvGnReLU(c_in, c_ot, stride=stride, transpose=use_transpose, output_padding=output_padding, dropout=dp)
     elif op_name == 'se_conv':
-        return PartialConvGnSeReLU(c_in, c_ot, stride=stride, transpose=use_transpose, output_padding=output_padding, dropout=dp, op_type=op_type)
+        return ConvGnSeReLU(c_in, c_ot, stride=stride, transpose=use_transpose, output_padding=output_padding, dropout=dp)
     elif op_name == 'dil_conv_2':
-        return PartialConvGnReLU(c_in, c_ot, stride=stride, transpose=use_transpose, output_padding=output_padding, dilation=2, dropout=dp, op_type=op_type)
+        return ConvGnReLU(c_in, c_ot, stride=stride, transpose=use_transpose, output_padding=output_padding, dilation=2, dropout=dp)
     elif op_name == 'dil_conv_3':
-        return PartialConvGnReLU(c_in, c_ot, stride=stride, transpose=use_transpose, output_padding=output_padding, dilation=3, dropout=dp, op_type=op_type)
+        return ConvGnReLU(c_in, c_ot, stride=stride, transpose=use_transpose, output_padding=output_padding, dilation=3, dropout=dp)
     else:
         raise NotImplementedError()
 
