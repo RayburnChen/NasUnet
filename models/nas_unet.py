@@ -45,17 +45,16 @@ class BuildCell(nn.Module):
         self._input_num = 2
 
         self._ops = nn.ModuleList()
-        idx_start = 0 if cell_type == 'down' else 1
         for name, index in zip(op_names, idx):
-            if idx_start <= index < self._input_num:
+            if index < self._input_num:
                 if cell_type == 'down':
-                    op = OPS[name](c, c_part, op_type=OpType.DOWN, dp=self.dropout_prob)
-                # elif index > 0:
-                #     op = OPS[name](c, c_part, op_type=OpType.UP, dp=self.dropout_prob)
+                    op = OPS[name](c, c_part, OpType.DOWN, self.dropout_prob)
+                elif index > 0:
+                    op = OPS[name](c, c_part, OpType.UP, self.dropout_prob)
                 else:
-                    op = OPS[name](c, c_part, op_type=OpType.UP, dp=self.dropout_prob)
+                    op = OPS[name](c, c_part, OpType.NORM, self.dropout_prob)
             else:
-                op = OPS[name](c_part, c_part, op_type=OpType.NORM, dp=self.dropout_prob)
+                op = OPS[name](c_part, c_part, OpType.NORM, self.dropout_prob)
             self._ops += [op]
         self._indices = idx
 

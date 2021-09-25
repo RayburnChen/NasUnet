@@ -19,8 +19,8 @@ OPS = {
 }
 
 DownOps = [
-    # 'avg_pool',
-    # 'max_pool',
+    'avg_pool',
+    'max_pool',
     'conv',
     'dil_conv_2',
     'dil_conv_3',
@@ -28,7 +28,7 @@ DownOps = [
 ]
 
 UpOps = [
-    # 'up_sample',
+    'up_sample',
     'conv',
     'dil_conv_2',
     'dil_conv_3',
@@ -48,12 +48,12 @@ NormOps = [
 
 
 class OpType(Enum):
-    UP = UpOps
-    DOWN = DownOps
-    NORM = NormOps
+    UP = {'id': 1, 'ops': UpOps}
+    DOWN = {'id': 2, 'ops': DownOps}
+    NORM = {'id': 3, 'ops': NormOps}
 
 
-def build_ops(op_name, op_type: OpType, c_in, c_ot, dp=0):
+def build_ops(op_name, op_type: OpType, c_in: Optional[int] = None, c_ot: Optional[int] = None, dp=0):
     stride = 1 if op_type == OpType.NORM else 2
     use_transpose = True if op_type == OpType.UP else False
     output_padding = 1 if op_type == OpType.UP else 0

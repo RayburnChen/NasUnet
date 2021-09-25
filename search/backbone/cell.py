@@ -6,15 +6,16 @@ class MixedOp(nn.Module):
 
     def __init__(self, ch_in, ch_ot, op_type):
         super(MixedOp, self).__init__()
+        assert ch_in >= ch_ot, 'Not implemented'
         self._ops = nn.ModuleList()
         self._op_type = op_type
         self.k = 2
         self.mp = nn.MaxPool2d(2, 2)
-        self.c_ot_part = ch_ot // self.k
-        self.c_in_part = ch_in - self.c_ot_part
+        self.c_part = ch_ot // self.k
+        self.ch_ot = ch_ot
 
-        for pri in self._op_type.value:
-            op = OPS[pri](self.c_in_part, self.c_ot_part, self._op_type, dp=0)
+        for pri in self._op_type.value['ops']:
+            op = OPS[pri](self.c_part, self.c_part, self._op_type, dp=0)
             self._ops.append(op)
 
     def forward(self, x, weights_norm, weights_chg):
@@ -23,9 +24,9 @@ class MixedOp(nn.Module):
         # weights: k * 1 where k is the number of down primitive operations
 
         # < 1/k
-        xtemp1 = x[:, :  self.c_in_part, :, :]
+        xtemp1 = x[:, :  self.c_part, :, :]
         # > 1/k
-        xtemp2 = x[:, self.c_in_part:, :, :]
+        xtemp2 = x[:, self.c_part:self.ch_ot, :, :]
 
         # down cell needs pooling before concat
         # up cell needs interpolate before concat
@@ -80,7 +81,6 @@ class Cell(nn.Module):
         # i=1  j=0,1,2
         # i=2  j=0,1,2,3
         # _ops=2+3+4=9
-        idx_start = 0 if self._cell_type == 'down' else 1
         for i in range(self._meta_node_num):
             for j in range(self._input_num + i):  # the input id for remaining meta-node
                 # only the first input is reduction
@@ -88,23 +88,13 @@ class Cell(nn.Module):
                 # up cell:   |*|_|*|*|_|*|_|*|*| where _ indicate up operation
                 if j < self._input_num:
                     if cell_type == 'down':
-                        ops_type = OpType.DOWN
+                        op = MixedOp(c, c_part, OpType.DOWN)
                     elif j > 0:
-                        ops_type = OpType.UP
+                        op = MixedOp(c, c_part, OpType.UP)
                     else:
-                        ops_type = OpType.NORM
-                    op = MixedOp(c, c_part, op_type=ops_type)
+                        op = MixedOp(c, c_part, OpType.NORM)
                 else:
-                    ops_type = OpType.NORM
-                    op = MixedOp(c_part, c_part, op_type=ops_type)
-
-                if idx_start <= j < 2:
-                    if self._cell_type == 'up':
-                        op = MixedOp(c_in0, c_part, op_type=OpType.UP)
-                    else:
-                        op = MixedOp(c_in0, c_part, op_type=OpType.DOWN)
-                else:
-                    op = MixedOp(c_part, c_part, op_type=OpType.NORM)
+                    op = MixedOp(c_part, c_part, OpType.NORM)
 
                 self._ops.append(op)
 
