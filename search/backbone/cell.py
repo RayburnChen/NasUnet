@@ -4,15 +4,17 @@ from util.prim_ops_set import *
 
 class MixedOp(nn.Module):
 
-    def __init__(self, c, op_type):
+    def __init__(self, ch_in, ch_ot, op_type):
         super(MixedOp, self).__init__()
         self._ops = nn.ModuleList()
         self._op_type = op_type
-        self.k = 4
+        self.k = 2
         self.mp = nn.MaxPool2d(2, 2)
+        self.c_ot_part = ch_ot // self.k
+        self.c_in_part = ch_in - self.c_ot_part
 
         for pri in self._op_type.value:
-            op = OPS[pri](c // self.k, c // self.k, self._op_type, dp=0)
+            op = OPS[pri](self.c_in_part, self.c_ot_part, self._op_type, dp=0)
             self._ops.append(op)
 
     def forward(self, x, weights_norm, weights_chg):
@@ -20,12 +22,10 @@ class MixedOp(nn.Module):
         # weights: j * 1 where j is the number of up primitive operations
         # weights: k * 1 where k is the number of down primitive operations
 
-        # channel proportion k
-        dim_2 = x.shape[1]
         # < 1/k
-        xtemp1 = x[:, :  dim_2 // self.k, :, :]
+        xtemp1 = x[:, :  self.c_in_part, :, :]
         # > 1/k
-        xtemp2 = x[:, dim_2 // self.k:, :, :]
+        xtemp2 = x[:, self.c_in_part:, :, :]
 
         # down cell needs pooling before concat
         # up cell needs interpolate before concat
@@ -54,44 +54,57 @@ class Cell(nn.Module):
         self.c = c
         self._meta_node_num = meta_node_num
         self._multiplier = meta_node_num
-        self._input_node_num = 2
+        self._input_num = 2
         self._cell_type = cell_type
-
+        c_part = 16
         if self._cell_type == 'down':
             # Note: the s0 size is twice than s1!
             # self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, ops_order='weight_norm')
             # self.preprocess0 = nn.MaxPool2d(3, stride=2, padding=1)  # suppose c_in0 == c
-            self.preprocess0 = nn.Sequential(nn.MaxPool2d(3, stride=2, padding=1), ShrinkBlock(c_in0, c, k=1))
+            # self.preprocess0 = nn.Sequential(nn.MaxPool2d(3, stride=2, padding=1), ShrinkBlock(c_in0, c, k=1))
+            self.preprocess0 = nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False)  # suppose c_in0 == c
         else:
             # self.preprocess0 = ConvGnReLU(c_in0, c, kernel_size=3)
-            self.preprocess0 = ShrinkBlock(c_in0, c, k=1)
+            self.preprocess0 = ShrinkBlock(c_in0, c)
         # self.preprocess1 = ConvOps(c_in1, c, kernel_size=1, ops_order='weight_norm_act')
-        # self.preprocess1 = nn.Identity()  # suppose c_in1 == c
-        self.preprocess1 = ShrinkBlock(c_in1, c, k=1)
-        self.c_part = self.preprocess1.c_part
+        self.preprocess1 = nn.Identity()  # suppose c_in1 == c
+        # self.preprocess1 = ShrinkBlock(c_in1, c, k=1)
+        # self.c_part = self.preprocess1.c_part
 
         # self.post_process = ConvGnReLU(c * self._meta_node_num, c, kernel_size=3)
-        self.post_process = ExpandBlock(self.c_part * self._meta_node_num, c, cell_type=cell_type)
+        self.post_process = ExpandBlock(c_part * self._meta_node_num, c, cell_type=cell_type)
 
         self._ops = nn.ModuleList()
 
-        idx_start = 0 if self._cell_type == 'down' else 1
         # i=0  j=0,1
         # i=1  j=0,1,2
         # i=2  j=0,1,2,3
         # _ops=2+3+4=9
+        idx_start = 0 if self._cell_type == 'down' else 1
         for i in range(self._meta_node_num):
-            for j in range(self._input_node_num + i):  # the input id for remaining meta-node
+            for j in range(self._input_num + i):  # the input id for remaining meta-node
                 # only the first input is reduction
                 # down cell: |_|_|_|_|*|_|_|*|*| where _ indicate down operation
                 # up cell:   |*|_|*|*|_|*|_|*|*| where _ indicate up operation
+                if j < self._input_num:
+                    if cell_type == 'down':
+                        ops_type = OpType.DOWN
+                    elif j > 0:
+                        ops_type = OpType.UP
+                    else:
+                        ops_type = OpType.NORM
+                    op = MixedOp(c, c_part, op_type=ops_type)
+                else:
+                    ops_type = OpType.NORM
+                    op = MixedOp(c_part, c_part, op_type=ops_type)
+
                 if idx_start <= j < 2:
                     if self._cell_type == 'up':
-                        op = MixedOp(self.c_part, op_type=OpType.UP)
+                        op = MixedOp(c_in0, c_part, op_type=OpType.UP)
                     else:
-                        op = MixedOp(self.c_part, op_type=OpType.DOWN)
+                        op = MixedOp(c_in0, c_part, op_type=OpType.DOWN)
                 else:
-                    op = MixedOp(self.c_part, op_type=OpType.NORM)
+                    op = MixedOp(c_part, c_part, op_type=OpType.NORM)
 
                 self._ops.append(op)
 

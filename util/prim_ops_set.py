@@ -20,7 +20,7 @@ OPS = {
 
 DownOps = [
     # 'avg_pool',
-    'max_pool',
+    # 'max_pool',
     'conv',
     'dil_conv_2',
     'dil_conv_3',
@@ -28,7 +28,7 @@ DownOps = [
 ]
 
 UpOps = [
-    'up_sample',
+    # 'up_sample',
     'conv',
     'dil_conv_2',
     'dil_conv_3',
@@ -36,7 +36,7 @@ UpOps = [
 ]
 
 NormOps = [
-    # 'avg_pool',
+    'avg_pool',
     'max_pool',
     'identity',
     'none',
@@ -53,7 +53,7 @@ class OpType(Enum):
     NORM = NormOps
 
 
-def build_ops(op_name, op_type: OpType, c_in: Optional[int] = None, c_ot: Optional[int] = None, dp=0):
+def build_ops(op_name, op_type: OpType, c_in, c_ot, dp=0):
     stride = 1 if op_type == OpType.NORM else 2
     use_transpose = True if op_type == OpType.UP else False
     output_padding = 1 if op_type == OpType.UP else 0
@@ -160,16 +160,14 @@ class SEBlock(nn.Module):
 
 class ShrinkBlock(nn.Module):
 
-    def __init__(self, c_in, c_ot, k=2):
+    def __init__(self, c_in, c_ot):
         super().__init__()
-        self.k = k
         g = 1 if (c_ot % 16 > 0) else 0
         g += c_ot // 16
         self.g = g
-        self.c_part = c_ot // self.k
 
-        self.conv = nn.Conv2d(c_in, self.c_part, kernel_size=1, groups=self.g, bias=False)
-        self.bn = nn.BatchNorm2d(self.c_part)
+        self.conv = nn.Conv2d(c_in, c_ot, kernel_size=3, padding=1, groups=self.g, bias=False)
+        self.bn = nn.BatchNorm2d(c_ot)
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x):
@@ -181,14 +179,14 @@ class ShrinkBlock(nn.Module):
 
 class ExpandBlock(nn.Module):
 
-    def __init__(self, c_part, c_ot, cell_type='down'):
+    def __init__(self, c_in, c_ot, cell_type='down'):
         super().__init__()
         g = 1 if (c_ot % 16 > 0) else 0
         g += c_ot // 16
         self.g = g
         self.cell_type = cell_type
 
-        self.conv = nn.Conv2d(c_part, c_ot, kernel_size=3, padding=1, groups=self.g, bias=False)
+        self.conv = nn.Conv2d(c_in, c_ot, kernel_size=3, padding=1, groups=self.g, bias=False)
         self.bn = nn.BatchNorm2d(c_ot)
         self.relu = nn.ReLU(inplace=True)
 

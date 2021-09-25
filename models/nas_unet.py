@@ -9,19 +9,20 @@ class BuildCell(nn.Module):
 
     def __init__(self, genotype, c_in0, c_in1, c, cell_type, dropout_prob=0):
         super(BuildCell, self).__init__()
-
+        # c_part = c // 4
+        c_part = 16
         if cell_type == 'down':
             # Note: the s0 size is twice than s1!
             # self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, ops_order='weight_norm')
-            # self.preprocess0 = nn.MaxPool2d(3, stride=2, padding=1)  # suppose c_in0 == c
-            self.preprocess0 = nn.Sequential(nn.MaxPool2d(3, stride=2, padding=1), ShrinkBlock(c_in0, c))
+            self.preprocess0 = nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False)  # suppose c_in0 == c
+            # self.preprocess0 = nn.Sequential(nn.MaxPool2d(3, stride=2, padding=1), ShrinkBlock(c_in0, c))
         else:
             # self.preprocess0 = ConvGnReLU(c_in0, c, kernel_size=3)
             self.preprocess0 = ShrinkBlock(c_in0, c)
         # self.preprocess1 = ConvOps(c_in1, c, kernel_size=1, ops_order='weight_norm')
-        # self.preprocess1 = nn.Identity()  # suppose c_in1 == c
-        self.preprocess1 = ShrinkBlock(c_in1, c)
-        self.c_part = self.preprocess1.c_part
+        self.preprocess1 = nn.Identity()  # suppose c_in1 == c
+        # self.preprocess1 = ShrinkBlock(c_in1, c)
+        # c_part = self.preprocess1.c_part
 
         if cell_type == 'up':
             op_names, idx = zip(*genotype.up)
@@ -31,35 +32,38 @@ class BuildCell(nn.Module):
             concat = genotype.down_concat
 
         # self.post_process = ConvGnReLU(c * len(concat), c, kernel_size=3)
-        # self.post_process = ConvGnReLU(self.c_part * len(concat), c, kernel_size=3)
-        self.post_process = ExpandBlock(self.c_part * len(concat), c, cell_type=cell_type)
+        # self.post_process = ConvGnReLU(c_part * len(concat), c, kernel_size=3)
+        self.post_process = ExpandBlock(c_part * len(concat), c, cell_type=cell_type)
         self.dropout_prob = dropout_prob
-        self._compile(self.c_part, cell_type, op_names, idx, concat)
+        self._compile(c, c_part, cell_type, op_names, idx, concat)
 
-    def _compile(self, c, cell_type, op_names, idx, concat):
+    def _compile(self, c, c_part, cell_type, op_names, idx, concat):
         assert len(op_names) == len(idx)
         self._num_meta_node = len(op_names) // 2
         self._concat = concat
         self._multiplier = len(concat)
-        self._input_node_num = 2
-        idx_start = 0 if cell_type == 'down' else 1
+        self._input_num = 2
 
         self._ops = nn.ModuleList()
+        idx_start = 0 if cell_type == 'down' else 1
         for name, index in zip(op_names, idx):
-            if cell_type == 'down':
-                op_type = OpType.DOWN if idx_start <= index < self._input_node_num else OpType.NORM
-                op = OPS[name](c, c, op_type, dp=self.dropout_prob)
+            if idx_start <= index < self._input_num:
+                if cell_type == 'down':
+                    op = OPS[name](c, c_part, op_type=OpType.DOWN, dp=self.dropout_prob)
+                # elif index > 0:
+                #     op = OPS[name](c, c_part, op_type=OpType.UP, dp=self.dropout_prob)
+                else:
+                    op = OPS[name](c, c_part, op_type=OpType.UP, dp=self.dropout_prob)
             else:
-                op_type = OpType.UP if idx_start <= index < self._input_node_num else OpType.NORM
-                op = OPS[name](c, c, op_type, dp=self.dropout_prob)
+                op = OPS[name](c_part, c_part, op_type=OpType.NORM, dp=self.dropout_prob)
             self._ops += [op]
         self._indices = idx
 
     def forward(self, in0, in1):
-        s0 = self.preprocess0(in0)
-        s1 = self.preprocess1(in1)
+        in0 = self.preprocess0(in0)
+        in1 = self.preprocess1(in1)
 
-        states = [s0, s1]
+        states = [in0, in1]
         for i in range(self._num_meta_node):
             h1 = states[self._indices[2 * i]]
             h2 = states[self._indices[2 * i + 1]]
@@ -69,8 +73,8 @@ class BuildCell(nn.Module):
 
             s = h1 + h2
             states += [s]
-
-        return self.post_process(torch.cat([states[i] for i in self._concat], dim=1), in1)
+        out = torch.cat([states[i] for i in self._concat], dim=1)
+        return self.post_process(out, in1)
 
 
 class Head(nn.Module):
