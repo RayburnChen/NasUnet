@@ -21,7 +21,6 @@ OPS = {
 
 DownOps = [
     'avg_pool',
-    'max_pool',
     'conv',
     'dil_conv_2',
     'dil_conv_3',
@@ -40,7 +39,6 @@ UpOps = [
 
 NormOps = [
     'avg_pool',
-    'max_pool',
     'identity',
     'none',
     'conv',
@@ -206,7 +204,7 @@ class ShrinkBlock(nn.Module):
         if self.cell_type == 'up':
             self.skip_path = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
         else:
-            self.skip_path = nn.AvgPool2d(3, stride=2, padding=1)
+            self.skip_path = nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False)
 
     def forward(self, x, residual):
         out = self.conv(x)
@@ -243,7 +241,7 @@ class PartialConvGnReLU(nn.Module):
 
         if self.stride > 1:
             if op_type == OpType.DOWN:
-                self.skip_path = nn.AvgPool2d(3, stride=stride, padding=1)
+                self.skip_path = nn.AvgPool2d(3, stride=stride, padding=1, count_include_pad=False)
             else:
                 self.skip_path = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
 

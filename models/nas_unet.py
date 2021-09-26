@@ -15,7 +15,7 @@ class BuildCell(nn.Module):
             # Note: the s0 size is twice than s1!
             # self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, ops_order='weight_norm')
             self.preprocess0 = nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False)  # suppose c_in0 == c_in1
-            # self.preprocess0 = nn.Sequential(nn.MaxPool2d(3, stride=2, padding=1), ShrinkBlock(c_in0, c))
+            # self.preprocess0 = nn.Sequential(nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False), ShrinkBlock(c_in0, c))
         else:
             # self.preprocess0 = ConvGnReLU(c_in0, c, kernel_size=3)
             self.preprocess0 = PreShrinkBlock(c_in0, c_in1)

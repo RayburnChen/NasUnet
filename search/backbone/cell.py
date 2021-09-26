@@ -10,7 +10,7 @@ class MixedOp(nn.Module):
         self._ops = nn.ModuleList()
         self._op_type = op_type
         self.k = 2
-        self.mp = nn.MaxPool2d(2, 2)
+        self.mp = nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False)
         self.c_part = ch_ot // self.k
         self.ch_ot = ch_ot
 
@@ -61,8 +61,8 @@ class Cell(nn.Module):
         if self._cell_type == 'down':
             # Note: the s0 size is twice than s1!
             # self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, ops_order='weight_norm')
-            # self.preprocess0 = nn.MaxPool2d(3, stride=2, padding=1)  # suppose c_in0 == c
-            # self.preprocess0 = nn.Sequential(nn.MaxPool2d(3, stride=2, padding=1), ShrinkBlock(c_in0, c, k=1))
+            # self.preprocess0 = nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False)  # suppose c_in0 == c
+            # self.preprocess0 = nn.Sequential(nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False), ShrinkBlock(c_in0, c, k=1))
             self.preprocess0 = nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False)  # suppose c_in0 == c
         else:
             # self.preprocess0 = ConvGnReLU(c_in0, c, kernel_size=3)
