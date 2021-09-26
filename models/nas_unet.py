@@ -7,18 +7,18 @@ from .resnet import BasicBlock
 class BuildCell(nn.Module):
     """Build a cell from genotype"""
 
-    def __init__(self, genotype, c_in0, c_in1, c, cell_type, dropout_prob=0):
+    def __init__(self, genotype, c_in0, c_in1, c_out, cell_type, dropout_prob=0):
         super(BuildCell, self).__init__()
         # c_part = c // 4
-        c_part = 16
+        c_part = 32
         if cell_type == 'down':
             # Note: the s0 size is twice than s1!
             # self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, ops_order='weight_norm')
-            self.preprocess0 = nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False)  # suppose c_in0 == c
+            self.preprocess0 = nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False)  # suppose c_in0 == c_in1
             # self.preprocess0 = nn.Sequential(nn.MaxPool2d(3, stride=2, padding=1), ShrinkBlock(c_in0, c))
         else:
             # self.preprocess0 = ConvGnReLU(c_in0, c, kernel_size=3)
-            self.preprocess0 = ShrinkBlock(c_in0, c)
+            self.preprocess0 = PreShrinkBlock(c_in0, c_in1)
         # self.preprocess1 = ConvOps(c_in1, c, kernel_size=1, ops_order='weight_norm')
         self.preprocess1 = nn.Identity()  # suppose c_in1 == c
         # self.preprocess1 = ShrinkBlock(c_in1, c)
@@ -33,9 +33,9 @@ class BuildCell(nn.Module):
 
         # self.post_process = ConvGnReLU(c * len(concat), c, kernel_size=3)
         # self.post_process = ConvGnReLU(c_part * len(concat), c, kernel_size=3)
-        self.post_process = ExpandBlock(c_part * len(concat), c, cell_type=cell_type)
+        self.post_process = ShrinkBlock(c_part * len(concat), c_out, cell_type=cell_type)
         self.dropout_prob = dropout_prob
-        self._compile(c, c_part, cell_type, op_names, idx, concat)
+        self._compile(c_in1, c_part, cell_type, op_names, idx, concat)
 
     def _compile(self, c, c_part, cell_type, op_names, idx, concat):
         assert len(op_names) == len(idx)

@@ -16,6 +16,7 @@ OPS = {
     'dil_conv_2': lambda c_in, c_ot, op_type, dp: build_ops('dil_conv_2', op_type, c_in, c_ot, dp=dp),
     'dil_conv_3': lambda c_in, c_ot, op_type, dp: build_ops('dil_conv_3', op_type, c_in, c_ot, dp=dp),
     'se_conv': lambda c_in, c_ot, op_type, dp: build_ops('se_conv', op_type, c_in, c_ot, dp=dp),
+    'dep_sep_conv': lambda c_in, c_ot, op_type, dp: build_ops('dep_sep_conv', op_type, c_in, c_ot, dp=dp),
 }
 
 DownOps = [
@@ -25,6 +26,7 @@ DownOps = [
     'dil_conv_2',
     'dil_conv_3',
     'se_conv',
+    'dep_sep_conv',
 ]
 
 UpOps = [
@@ -33,6 +35,7 @@ UpOps = [
     'dil_conv_2',
     'dil_conv_3',
     'se_conv',
+    'dep_sep_conv',
 ]
 
 NormOps = [
@@ -44,6 +47,7 @@ NormOps = [
     'dil_conv_2',
     'dil_conv_3',
     'se_conv',
+    'dep_sep_conv',
 ]
 
 
@@ -69,6 +73,8 @@ def build_ops(op_name, op_type: OpType, c_in: Optional[int] = None, c_ot: Option
         return ConvGnReLU(c_in, c_ot, stride=stride, transpose=use_transpose, output_padding=output_padding, dilation=2, dropout=dp)
     elif op_name == 'dil_conv_3':
         return ConvGnReLU(c_in, c_ot, stride=stride, transpose=use_transpose, output_padding=output_padding, dilation=3, dropout=dp)
+    elif op_name == 'dep_sep_conv':
+        return DepSepConv(c_in, c_ot, stride=stride, transpose=use_transpose, output_padding=output_padding, dropout=dp)
     else:
         raise NotImplementedError()
 
@@ -100,6 +106,18 @@ class ConvGnSeReLU(nn.Sequential):
         super().__init__(*conv, norm, se, act)
 
 
+class DepSepConv(nn.Sequential):
+    def __init__(self, c_in, c_ot, kernel_size=3, stride=1, dilation=1, transpose=False, output_padding=0,
+                 affine=True, dropout=0):
+        depth_conv = build_weight(c_in, c_in, kernel_size, stride, dilation, transpose, output_padding, dropout, groups=c_in)
+        depth_norm = build_norm(c_in, affine)
+        depth_act = build_activation()
+        point_conv = build_weight(c_in, c_ot, 1, 1, 1, False, 0, dropout)
+        point_norm = build_norm(c_ot, affine)
+        point_act = build_activation()
+        super().__init__(*depth_conv, depth_norm, depth_act, *point_conv, point_norm, point_act)
+
+
 def build_weight(c_in, c_ot, kernel_size, stride, dilation, use_transpose, output_padding, dropout_rate, groups=1):
     padding = get_same_padding(kernel_size)
     padding *= dilation
@@ -116,10 +134,11 @@ def build_weight(c_in, c_ot, kernel_size, stride, dilation, use_transpose, outpu
 
 
 def build_norm(c_ot, affine):
-    c_per_g = 16
-    group = 1 if (c_ot % c_per_g > 0) else 0
-    group += c_ot // c_per_g
-    return nn.GroupNorm(group, c_ot, affine=affine)
+    return nn.BatchNorm2d(c_ot, affine=affine)
+    # c_per_g = 16
+    # group = 1 if (c_ot % c_per_g > 0) else 0
+    # group += c_ot // c_per_g
+    # return nn.GroupNorm(group, c_ot, affine=affine)
 
 
 def build_activation():
@@ -158,37 +177,31 @@ class SEBlock(nn.Module):
         return x * y.expand_as(x)
 
 
-class ShrinkBlock(nn.Module):
+class PreShrinkBlock(nn.Module):
 
     def __init__(self, c_in, c_ot):
         super().__init__()
-        g = 1 if (c_ot % 16 > 0) else 0
-        g += c_ot // 16
-        self.g = g
 
-        self.conv = nn.Conv2d(c_in, c_ot, kernel_size=3, padding=1, groups=self.g, bias=False)
-        self.bn = nn.BatchNorm2d(c_ot)
-        self.relu = nn.ReLU(inplace=True)
+        self.conv = nn.Conv2d(c_in, c_ot, kernel_size=3, padding=1, bias=False)
+        self.norm = build_norm(c_ot, True)
+        self.act = build_activation()
 
     def forward(self, x):
         out = self.conv(x)
-        out = self.bn(out)
-        out = self.relu(out)
-        return channel_shuffle(out, self.g)
+        out = self.norm(out)
+        out = self.act(out)
+        return out
 
 
-class ExpandBlock(nn.Module):
+class ShrinkBlock(nn.Module):
 
     def __init__(self, c_in, c_ot, cell_type='down'):
         super().__init__()
-        g = 1 if (c_ot % 16 > 0) else 0
-        g += c_ot // 16
-        self.g = g
         self.cell_type = cell_type
 
-        self.conv = nn.Conv2d(c_in, c_ot, kernel_size=3, padding=1, groups=self.g, bias=False)
-        self.bn = nn.BatchNorm2d(c_ot)
-        self.relu = nn.ReLU(inplace=True)
+        self.conv = nn.Conv2d(c_in, c_ot, kernel_size=3, padding=1, bias=False)
+        self.norm = build_norm(c_ot, True)
+        self.act = build_activation()
 
         if self.cell_type == 'up':
             self.skip_path = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
@@ -197,11 +210,51 @@ class ExpandBlock(nn.Module):
 
     def forward(self, x, residual):
         out = self.conv(x)
-        out = self.bn(out)
-        # out = self.relu(out)
-        out = self.relu(out + self.skip_path(residual))
+        out = self.norm(out)
+        out = self.act(out + self.skip_path(residual))
         return out
 
 
+class PartialConvGnReLU(nn.Module):
 
+    def __init__(self, c_in, c_ot, kernel_size=3, stride=1, dilation=1, transpose=False, output_padding=0,
+                 affine=True, dropout=0, op_type=OpType.NORM):
+        super().__init__()
 
+        k = 4
+        g = 1 if (c_ot % 16 > 0) else 0
+        g += c_ot // 16
+        self.g = g
+        c_part = c_ot // k
+        self.stride = stride
+
+        self.conv1 = nn.Conv2d(c_in, c_part, kernel_size=1, groups=g, bias=False)
+        self.bn1 = nn.BatchNorm2d(c_part)
+        self.relu1 = nn.ReLU(inplace=True)
+
+        self.conv2 = nn.Conv2d(c_part, c_part, kernel_size=3, stride=stride, padding=1, groups=c_part, bias=False)
+        # self.conv2 = build_weight(c_part, c_part, kernel_size, stride, dilation, transpose, output_padding, dropout, groups=c_part)[-1]
+        self.bn2 = nn.BatchNorm2d(c_part)
+        self.relu2 = nn.ReLU(inplace=True)
+
+        self.conv3 = nn.Conv2d(c_part, c_ot, kernel_size=1, groups=g, bias=False)
+        self.bn3 = nn.BatchNorm2d(c_ot)
+        self.relu3 = nn.ReLU(inplace=True)
+
+        if self.stride > 1:
+            if op_type == OpType.DOWN:
+                self.skip_path = nn.AvgPool2d(3, stride=stride, padding=1)
+            else:
+                self.skip_path = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
+
+    def forward(self, x):
+        out = self.relu1(self.bn1(self.conv1(x)))
+        out = channel_shuffle(out, self.g)
+        out = self.relu2(self.bn2(self.conv2(out)))
+        out = self.bn3(self.conv3(out))
+        if self.stride > 1:
+            res = self.skip_path(x)
+        else:
+            res = x
+        out = self.relu3(out + res)
+        return out

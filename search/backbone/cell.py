@@ -48,11 +48,11 @@ class MixedOp(nn.Module):
 
 class Cell(nn.Module):
 
-    def __init__(self, meta_node_num, c_in0, c_in1, c, cell_type):
+    def __init__(self, meta_node_num, c_in0, c_in1, c_out, cell_type):
         super(Cell, self).__init__()
         self.c_in0 = c_in0
         self.c_in1 = c_in1
-        self.c = c
+        self.c_out = c_out
         self._meta_node_num = meta_node_num
         self._multiplier = meta_node_num
         self._input_num = 2
@@ -66,14 +66,14 @@ class Cell(nn.Module):
             self.preprocess0 = nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False)  # suppose c_in0 == c
         else:
             # self.preprocess0 = ConvGnReLU(c_in0, c, kernel_size=3)
-            self.preprocess0 = ShrinkBlock(c_in0, c)
+            self.preprocess0 = PreShrinkBlock(c_in0, c_in1)
         # self.preprocess1 = ConvOps(c_in1, c, kernel_size=1, ops_order='weight_norm_act')
         self.preprocess1 = nn.Identity()  # suppose c_in1 == c
         # self.preprocess1 = ShrinkBlock(c_in1, c, k=1)
         # self.c_part = self.preprocess1.c_part
 
         # self.post_process = ConvGnReLU(c * self._meta_node_num, c, kernel_size=3)
-        self.post_process = ExpandBlock(c_part * self._meta_node_num, c, cell_type=cell_type)
+        self.post_process = ShrinkBlock(c_part * self._meta_node_num, c_out, cell_type=cell_type)
 
         self._ops = nn.ModuleList()
 
@@ -88,11 +88,11 @@ class Cell(nn.Module):
                 # up cell:   |*|_|*|*|_|*|_|*|*| where _ indicate up operation
                 if j < self._input_num:
                     if cell_type == 'down':
-                        op = MixedOp(c, c_part, OpType.DOWN)
+                        op = MixedOp(c_in1, c_part, OpType.DOWN)
                     elif j > 0:
-                        op = MixedOp(c, c_part, OpType.UP)
+                        op = MixedOp(c_in1, c_part, OpType.UP)
                     else:
-                        op = MixedOp(c, c_part, OpType.NORM)
+                        op = MixedOp(c_in1, c_part, OpType.NORM)
                 else:
                     op = MixedOp(c_part, c_part, OpType.NORM)
 
