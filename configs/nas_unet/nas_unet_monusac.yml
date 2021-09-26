@@ -11,8 +11,9 @@ searching:
     init_channels: 32
     depth: 5
     epoch: 1000
-#    batch_size: 20
+#    batch_size: 17
 #    batch_size: 12
+#    batch_size: 7
     batch_size: 3
     report_freq: 10
     n_workers: 2
