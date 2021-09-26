@@ -20,7 +20,6 @@ OPS = {
 }
 
 DownOps = [
-    'avg_pool',
     'conv',
     'dil_conv_2',
     'dil_conv_3',
@@ -29,7 +28,6 @@ DownOps = [
 ]
 
 UpOps = [
-    'up_sample',
     'conv',
     'dil_conv_2',
     'dil_conv_3',

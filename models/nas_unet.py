@@ -9,8 +9,8 @@ class BuildCell(nn.Module):
 
     def __init__(self, genotype, c_in0, c_in1, c_out, cell_type, dropout_prob=0):
         super(BuildCell, self).__init__()
-        # c_part = c // 4
-        c_part = 32
+        self.k = 1
+        c_part = c_out // self.k
         if cell_type == 'down':
             # Note: the s0 size is twice than s1!
             # self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, ops_order='weight_norm')

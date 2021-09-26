@@ -9,7 +9,7 @@ class MixedOp(nn.Module):
         assert ch_in >= ch_ot, 'Not implemented'
         self._ops = nn.ModuleList()
         self._op_type = op_type
-        self.k = 2
+        self.k = 4
         self.mp = nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False)
         self.c_part = ch_ot // self.k
         self.ch_ot = ch_ot
@@ -57,7 +57,8 @@ class Cell(nn.Module):
         self._multiplier = meta_node_num
         self._input_num = 2
         self._cell_type = cell_type
-        c_part = 16
+        self.k = 1
+        c_part = c_out // self.k
         if self._cell_type == 'down':
             # Note: the s0 size is twice than s1!
             # self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, ops_order='weight_norm')
