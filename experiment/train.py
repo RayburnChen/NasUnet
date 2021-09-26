@@ -50,7 +50,7 @@ class Network(object):
         parser.add_argument('--genotype', nargs='?', type=str, default='', help='Model architecture')
         parser.add_argument('--loss', nargs='?', type=str, default='', help='Loss function')
         parser.add_argument('--depth', nargs='?', type=int, default=-1, help='Loss function')
-        parser.add_argument('--batch_size', nargs='?', type=int, default=-1, help='Loss function')
+        parser.add_argument('--batch_size', nargs='?', type=int, default=-1, help='Batch size')
 
         self.args = parser.parse_args()
 

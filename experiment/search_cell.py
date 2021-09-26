@@ -40,6 +40,8 @@ class SearchNetwork(object):
         parser = argparse.ArgumentParser(description='config')
         parser.add_argument('--config', nargs='?', type=str, default='../configs/nas_unet/nas_unet_voc.yml',
                             help='Configuration file to use')
+        parser.add_argument('--batch_size', nargs='?', type=int, default=-1, help='Batch size')
+        parser.add_argument('--meta_node_num', nargs='?', type=int, default=-1, help='Batch size')
 
         self.args = parser.parse_args()
 
@@ -83,12 +85,13 @@ class SearchNetwork(object):
         split = int(np.floor(self.cfg['searching']['train_portion'] * num_train))
         self.n_classes = trainset.num_class
         self.in_channels = trainset.in_channels
+        self.batch_size = self.args.batch_size if self.args.batch_size > 0 else self.cfg['searching']['batch_size']
         kwargs = {'num_workers': self.cfg['searching']['n_workers'], 'pin_memory': True}
-        self.train_queue = data.DataLoader(trainset, batch_size=self.cfg['searching']['batch_size'],
+        self.train_queue = data.DataLoader(trainset, batch_size=self.batch_size,
                                            sampler=torch.utils.data.sampler.SubsetRandomSampler(
                                                indices[:split]), **kwargs)
 
-        self.valid_queue = data.DataLoader(trainset, batch_size=self.cfg['searching']['batch_size'],
+        self.valid_queue = data.DataLoader(trainset, batch_size=self.batch_size,
                                            sampler=torch.utils.data.sampler.SubsetRandomSampler(
                                                indices[split:num_train]), **kwargs)
 
@@ -98,7 +101,7 @@ class SearchNetwork(object):
         init_channel = self.cfg['searching']['init_channels']
         depth = self.cfg['searching']['depth']
         supervision = self.cfg['searching']['deep_supervision']
-        meta_node_num = self.cfg['searching']['meta_node_num']
+        meta_node_num = self.args.meta_node_num if self.args.meta_node_num > 0 else self.cfg['searching']['meta_node_num']
         loss_name = self.cfg['searching']['loss']['name']
 
         # Setup loss function
