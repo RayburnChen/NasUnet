@@ -11,15 +11,14 @@ class MoNuSAC(BaseDataset):
     BASE_DIR, NUM_CLASS, CROP_SIZE = ('MoNuSAC/', 2, 256)
     IN_CHANNELS = 1
     CLASS_WEIGHTS = None
-    mean = [0.5148534]
-    std = [0.2183515]
+    mean = [0.5318197]
+    std = [0.20710655]
 
     def __init__(self, root, split='train', mode=None):
         super(MoNuSAC, self).__init__(root, split, mode, norm={'mu': self.mean, 'std': self.std})
         self.root = os.path.expanduser(root)
         self.joint_transform = Compose([
             RandomTranslate(offset=(0.3, 0.3)),
-            RandomVerticallyFlip(),
             RandomHorizontallyFlip(),
             RandomElasticTransform(alpha=1.5, sigma=0.07),
         ])
@@ -98,3 +97,5 @@ class MoNuSAC(BaseDataset):
         mean.div_(len(self.data_info))
         std.div_(len(self.data_info))
         return list(mean.numpy()), list(std.numpy())
+
+
