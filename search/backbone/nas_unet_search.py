@@ -126,8 +126,9 @@ class NasUnetSearch(nn.Module):
         super(NasUnetSearch, self).__init__()
         self._use_sharing = use_sharing
         self._meta_node_num = meta_node_num
+        self._depth = depth
 
-        self.net = SearchULikeCNN(input_c, c, num_classes, depth, meta_node_num,
+        self.net = SearchULikeCNN(input_c, c, num_classes, self._depth, meta_node_num,
                                   double_down_channel, use_softmax_head, supervision)
 
         if 'cuda' == str(device.type) and multi_gpus:
@@ -137,9 +138,9 @@ class NasUnetSearch(nn.Module):
             self.device_ids = [0]
 
         # Initialize architecture parameters: alpha
-        self._init_alphas(depth)
+        self._init_alphas()
 
-    def _init_alphas(self, depth):
+    def _init_alphas(self):
 
         normal_num_ops = len(NormOps)
         down_num_ops = len(DownOps)
@@ -155,7 +156,7 @@ class NasUnetSearch(nn.Module):
         self.betas_down = nn.Parameter(1e-3 * torch.randn(k))
         self.betas_up = nn.Parameter(1e-3 * torch.randn(k))
 
-        self.gamma = nn.Parameter(1e-3 * torch.randn(sum(range(depth - 1)), 2))
+        self.gamma = nn.Parameter(1e-3 * torch.randn(sum(range(self._depth - 1)), 2))
 
         self._arch_parameters = [
             self.alphas_down,
@@ -230,12 +231,16 @@ class NasUnetSearch(nn.Module):
         gene_down = geno_parser.parse(alphas_normal_down.numpy(), alphas_down.numpy(), cell_type='down')
         gene_up = geno_parser.parse(alphas_normal_up.numpy(), alphas_up.numpy(), cell_type='up')
         concat = range(2, self._meta_node_num + 2)
-        gamma = F.softmax(self.gamma, dim=-1).detach().cpu().argmax(1).tolist()
-        gamma[0] = 1
+        gamma = F.softmax(self.gamma, dim=-1).detach().cpu()
+        idx = torch.topk(gamma[:, 1], len(gamma) // 2, largest=False).indices
+        gamma = gamma.argmax(1).tolist()
+        gamma = [g if i not in idx else 0 for i, g in enumerate(gamma)]
+        gamma_path = [gamma[sum(range(i)): sum(range(i)) + i] for i in range(1, self._depth - 1)]
+        gamma_path = sum([g[:g.index(1)] + [1] * len(g[g.index(1):]) if i in g else g for g in gamma_path], [])
         geno_type = Genotype(
             down=gene_down, down_concat=concat,
             up=gene_up, up_concat=concat,
-            gamma=gamma
+            gamma=gamma_path
         )
         return geno_type
 
