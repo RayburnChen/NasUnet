@@ -67,14 +67,14 @@ class Cell(nn.Module):
             self.preprocess0 = nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False)  # suppose c_in0 == c
         else:
             # self.preprocess0 = ConvGnReLU(c_in0, c, kernel_size=3)
-            self.preprocess0 = PreShrinkBlock(c_in0, c_in1)
+            self.preprocess0 = ShrinkBlock(c_in0, c_in1)
         # self.preprocess1 = ConvOps(c_in1, c, kernel_size=1, ops_order='weight_norm_act')
         self.preprocess1 = nn.Identity()  # suppose c_in1 == c
         # self.preprocess1 = ShrinkBlock(c_in1, c, k=1)
         # self.c_part = self.preprocess1.c_part
 
         # self.post_process = ConvGnReLU(c * self._meta_node_num, c, kernel_size=3)
-        self.post_process = ShrinkBlock(c_part * self._meta_node_num, c_out, cell_type=cell_type)
+        self.post_process = RectifyBlock(c_part * self._meta_node_num, c_out, cell_type=cell_type)
 
         self._ops = nn.ModuleList()
 

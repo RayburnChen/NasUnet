@@ -48,14 +48,14 @@ searching:
     resume:
 training:
     geno_type: NASUNET
-    init_channels: 32
+    init_channels: 16
     depth: 5
     epoch: 3600
     batch_size: 12
     report_freq: 10
     n_workers: 2
     multi_gpus: True
-    double_down_channel: False
+    double_down_channel: True
     deep_supervision: False
     grad_clip: 5
     max_patience: 200

@@ -1,3 +1,5 @@
+import torch
+
 from util.gpu_memory_log import gpu_memory_log
 from util.prim_ops_set import *
 from .base import BaseNet
@@ -9,22 +11,25 @@ class BuildCell(nn.Module):
 
     def __init__(self, genotype, c_in0, c_in1, c_out, cell_type, dropout_prob=0):
         super(BuildCell, self).__init__()
-        self.k = 1
-        c_part = c_out // self.k
-        if cell_type == 'down':
+        self.cell_type = cell_type
+        # c_part = c_out // self.k
+        if self.cell_type == 'down':
             # Note: the s0 size is twice than s1!
             # self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, ops_order='weight_norm')
-            self.preprocess0 = nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False)  # suppose c_in0 == c_in1
+            # self.preprocess0 = nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False)  # suppose c_in0 == c_in1
+            self.preprocess0 = ExpandBlock(c_in0, c_in1)
+            self.c_part = c_in1
             # self.preprocess0 = nn.Sequential(nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False), ShrinkBlock(c_in0, c))
         else:
             # self.preprocess0 = ConvGnReLU(c_in0, c, kernel_size=3)
-            self.preprocess0 = PreShrinkBlock(c_in0, c_in1)
+            self.preprocess0 = ShrinkBlock(c_in0, c_in1)
+            self.c_part = c_out
         # self.preprocess1 = ConvOps(c_in1, c, kernel_size=1, ops_order='weight_norm')
-        self.preprocess1 = nn.Identity()  # suppose c_in1 == c
+        self.preprocess1 = nn.Identity()  # suppose c_in1 == c_out
         # self.preprocess1 = ShrinkBlock(c_in1, c)
         # c_part = self.preprocess1.c_part
 
-        if cell_type == 'up':
+        if self.cell_type == 'up':
             op_names, idx = zip(*genotype.up)
             concat = genotype.up_concat
         else:
@@ -33,11 +38,11 @@ class BuildCell(nn.Module):
 
         # self.post_process = ConvGnReLU(c * len(concat), c, kernel_size=3)
         # self.post_process = ConvGnReLU(c_part * len(concat), c, kernel_size=3)
-        self.post_process = ShrinkBlock(c_part * len(concat), c_out, cell_type=cell_type)
+        self.post_process = RectifyBlock(self.c_part * len(concat), c_out, c_in1, cell_type=self.cell_type)
         self.dropout_prob = dropout_prob
-        self._compile(c_in1, c_part, cell_type, op_names, idx, concat)
+        self._compile(c_in1, op_names, idx, concat)
 
-    def _compile(self, c, c_part, cell_type, op_names, idx, concat):
+    def _compile(self, c, op_names, idx, concat):
         assert len(op_names) == len(idx)
         self._num_meta_node = len(op_names) // 2
         self._concat = concat
@@ -47,14 +52,14 @@ class BuildCell(nn.Module):
         self._ops = nn.ModuleList()
         for name, index in zip(op_names, idx):
             if index < self._input_num:
-                if cell_type == 'down':
-                    op = OPS[name](c, c_part, OpType.DOWN, self.dropout_prob)
+                if self.cell_type == 'down':
+                    op = OPS[name](c, self.c_part, OpType.DOWN, self.dropout_prob)
                 elif index > 0:
-                    op = OPS[name](c, c_part, OpType.UP, self.dropout_prob)
+                    op = OPS[name](c, self.c_part, OpType.UP, self.dropout_prob)
                 else:
-                    op = OPS[name](c, c_part, OpType.NORM, self.dropout_prob)
+                    op = OPS[name](c, self.c_part, OpType.NORM, self.dropout_prob)
             else:
-                op = OPS[name](c_part, c_part, OpType.NORM, self.dropout_prob)
+                op = OPS[name](self.c_part, self.c_part, OpType.NORM, self.dropout_prob)
             self._ops += [op]
         self._indices = idx
 
@@ -73,7 +78,7 @@ class BuildCell(nn.Module):
             s = h1 + h2
             states += [s]
         out = torch.cat([states[i] for i in self._concat], dim=1)
-        return self.post_process(out, in1)
+        return self.post_process(out, in0, in1)
 
 
 class Head(nn.Module):

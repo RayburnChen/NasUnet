@@ -1,6 +1,7 @@
 from enum import Enum
 from typing import Optional
 
+import torch
 import torch.nn as nn
 
 from util.utils import *
@@ -131,10 +132,6 @@ def build_weight(c_in, c_ot, kernel_size, stride, dilation, use_transpose, outpu
 
 def build_norm(c_ot, affine):
     return nn.BatchNorm2d(c_ot, affine=affine)
-    # c_per_g = 16
-    # group = 1 if (c_ot % c_per_g > 0) else 0
-    # group += c_ot // c_per_g
-    # return nn.GroupNorm(group, c_ot, affine=affine)
 
 
 def build_activation():
@@ -173,7 +170,23 @@ class SEBlock(nn.Module):
         return x * y.expand_as(x)
 
 
-class PreShrinkBlock(nn.Module):
+class ExpandBlock(nn.Module):
+
+    def __init__(self, c_in0, c_in1):
+        super().__init__()
+        self.c_same = c_in0 == c_in1
+        self.pool1 = nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False)
+        if not self.c_same:
+            self.pool2 = nn.AvgPool2d(2, stride=2, count_include_pad=False)
+
+    def forward(self, x):
+        if self.c_same:
+            return self.pool1(x)
+        else:
+            return torch.cat([self.pool1(x), self.pool2(x)], dim=1)
+
+
+class ShrinkBlock(nn.Module):
 
     def __init__(self, c_in, c_ot):
         super().__init__()
@@ -189,24 +202,34 @@ class PreShrinkBlock(nn.Module):
         return out
 
 
-class ShrinkBlock(nn.Module):
+class RectifyBlock(nn.Module):
 
-    def __init__(self, c_in, c_ot, cell_type='down'):
+    def __init__(self, c_in, c_ot, c_res, cell_type='down'):
         super().__init__()
         self.cell_type = cell_type
+        self.c_same = c_ot == c_res
 
         self.conv = nn.Conv2d(c_in, c_ot, kernel_size=3, padding=1, bias=False)
         self.norm = build_norm(c_ot, True)
         self.act = build_activation()
 
-        if self.cell_type == 'up':
-            self.skip_path = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
+        if self.c_same:
+            self.rectify = nn.Identity()
         else:
-            self.skip_path = nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False)
+            self.rectify = nn.Conv2d(c_res, c_ot, kernel_size=1, bias=False)
 
-    def forward(self, x, residual):
+        if self.cell_type == 'up':
+            self.skip_path = nn.Sequential(nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False), self.rectify)
+        else:
+            self.skip_path = nn.Sequential(nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False), self.rectify)
+
+    def forward(self, x, in0, in1):
         out = self.conv(x)
         out = self.norm(out)
+        if self.c_same:
+            residual = in1
+        else:
+            residual = torch.cat([in0, in1], dim=1)
         out = self.act(out + self.skip_path(residual))
         return out
 
