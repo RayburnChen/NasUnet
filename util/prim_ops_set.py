@@ -213,10 +213,10 @@ class RectifyBlock(nn.Module):
         self.norm = build_norm(c_ot, True)
         self.act = build_activation()
 
-        if self.c_same:
-            self.rectify = nn.Identity()
-        else:
+        if not self.c_same and self.cell_type == 'up':
             self.rectify = nn.Conv2d(c_res, c_ot, kernel_size=1, bias=False)
+        else:
+            self.rectify = nn.Identity()
 
         if self.cell_type == 'up':
             self.skip_path = nn.Sequential(nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False), self.rectify)
@@ -226,10 +226,10 @@ class RectifyBlock(nn.Module):
     def forward(self, x, in0, in1):
         out = self.conv(x)
         out = self.norm(out)
-        if self.c_same:
-            residual = in1
-        else:
+        if not self.c_same and self.cell_type == 'down':
             residual = torch.cat([in0, in1], dim=1)
+        else:
+            residual = in1
         out = self.act(out + self.skip_path(residual))
         return out
 
