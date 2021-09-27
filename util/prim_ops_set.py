@@ -223,11 +223,11 @@ class RectifyBlock(nn.Module):
         else:
             self.skip_path = nn.Sequential(nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False), self.rectify)
 
-    def forward(self, x, in0, in1):
+    def forward(self, x, in1):
         out = self.conv(x)
         out = self.norm(out)
         if not self.c_same and self.cell_type == 'down':
-            residual = torch.cat([in0, in1], dim=1)
+            residual = torch.cat([in1, in1], dim=1)
         else:
             residual = in1
         out = self.act(out + self.skip_path(residual))

@@ -78,7 +78,7 @@ class BuildCell(nn.Module):
             s = h1 + h2
             states += [s]
         out = torch.cat([states[i] for i in self._concat], dim=1)
-        return self.post_process(out, in0, in1)
+        return self.post_process(out, in1)
 
 
 class Head(nn.Module):
