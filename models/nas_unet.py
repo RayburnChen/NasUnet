@@ -13,16 +13,10 @@ class BuildCell(nn.Module):
         c_part = c_out // self.k
         if cell_type == 'down':
             # Note: the s0 size is twice than s1!
-            # self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, ops_order='weight_norm')
             self.preprocess0 = nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False)  # suppose c_in0 == c_in1
-            # self.preprocess0 = nn.Sequential(nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False), ShrinkBlock(c_in0, c))
         else:
-            # self.preprocess0 = ConvGnReLU(c_in0, c, kernel_size=3)
             self.preprocess0 = ShrinkBlock(c_in0, c_in1)
-        # self.preprocess1 = ConvOps(c_in1, c, kernel_size=1, ops_order='weight_norm')
-        self.preprocess1 = nn.Identity()  # suppose c_in1 == c
-        # self.preprocess1 = ShrinkBlock(c_in1, c)
-        # c_part = self.preprocess1.c_part
+        self.preprocess1 = nn.Identity()
 
         if cell_type == 'up':
             op_names, idx = zip(*genotype.up)
@@ -31,8 +25,6 @@ class BuildCell(nn.Module):
             op_names, idx = zip(*genotype.down)
             concat = genotype.down_concat
 
-        # self.post_process = ConvGnReLU(c * len(concat), c, kernel_size=3)
-        # self.post_process = ConvGnReLU(c_part * len(concat), c, kernel_size=3)
         self.post_process = RectifyBlock(c_part * len(concat), c_out, cell_type=cell_type)
         self.dropout_prob = dropout_prob
         self._compile(c_in1, c_part, cell_type, op_names, idx, concat)

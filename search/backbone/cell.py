@@ -54,19 +54,11 @@ class Cell(nn.Module):
         c_part = c_out // self.k
         if self._cell_type == 'down':
             # Note: the s0 size is twice than s1!
-            # self.preprocess0 = ConvOps(c_in0, c, kernel_size=1, stride=2, ops_order='weight_norm')
-            # self.preprocess0 = nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False)  # suppose c_in0 == c
-            # self.preprocess0 = nn.Sequential(nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False), ShrinkBlock(c_in0, c, k=1))
             self.preprocess0 = nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False)  # suppose c_in0 == c
         else:
-            # self.preprocess0 = ConvGnReLU(c_in0, c, kernel_size=3)
             self.preprocess0 = ShrinkBlock(c_in0, c_in1)
-        # self.preprocess1 = ConvOps(c_in1, c, kernel_size=1, ops_order='weight_norm_act')
         self.preprocess1 = nn.Identity()  # suppose c_in1 == c
-        # self.preprocess1 = ShrinkBlock(c_in1, c, k=1)
-        # self.c_part = self.preprocess1.c_part
 
-        # self.post_process = ConvGnReLU(c * self._meta_node_num, c, kernel_size=3)
         self.post_process = RectifyBlock(c_part * self._meta_node_num, c_out, cell_type=cell_type)
 
         self._ops = nn.ModuleList()
