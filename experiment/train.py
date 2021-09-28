@@ -301,7 +301,7 @@ class Network(object):
 
             predicts = self.model(input)
 
-            self.logger.info('GPU memory total:{}, reserved:{}, allocated:{}, waiting:{}'.format(*gpu_memory()))
+            # self.logger.info('GPU memory total:{}, reserved:{}, allocated:{}, waiting:{}'.format(*gpu_memory()))
 
             train_loss = self.criterion(predicts, target)
 

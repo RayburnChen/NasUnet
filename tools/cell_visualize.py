@@ -14,7 +14,6 @@ def main(format):
         genotype = Genotype(down=[('dil_conv_3', 1), ('dil_conv_3', 0), ('dil_conv_2', 1), ('dil_conv_2', 2)], down_concat=range(2, 4), up=[('dil_conv_3', 1), ('dil_conv_3', 0), ('dil_conv_3', 0), ('dep_sep_conv', 2)], up_concat=range(2, 4), gamma=[0, 0, 1, 0, 1, 1])
 
 
-
     except AttributeError:
         print('{} is not specified in genotype.py'.format(genotype))
         sys.exit(1)
