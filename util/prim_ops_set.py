@@ -206,7 +206,7 @@ class ShrinkBlock(nn.Module):
 
 class RectifyBlock(nn.Module):
 
-    def __init__(self, c_in, c_ot, cell_type='down'):
+    def __init__(self, c_in, c_ot, c_res, cell_type='down'):
         super().__init__()
         self.cell_type = cell_type
 
@@ -215,9 +215,9 @@ class RectifyBlock(nn.Module):
         self.act = build_activation()
 
         if self.cell_type == 'up':
-            self.skip_path = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
+            self.skip_path = AdapterBlock(c_res, c_ot, nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False))
         else:
-            self.skip_path = nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False)
+            self.skip_path = AdapterBlock(c_res, c_ot, nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False))
 
     def forward(self, x, residual):
         out = self.conv(x)
@@ -226,46 +226,3 @@ class RectifyBlock(nn.Module):
         return out
 
 
-class PartialConvGnReLU(nn.Module):
-
-    def __init__(self, c_in, c_ot, kernel_size=3, stride=1, dilation=1, transpose=False, output_padding=0,
-                 affine=True, dropout=0, op_type=OpType.NORM):
-        super().__init__()
-
-        k = 4
-        g = 1 if (c_ot % 16 > 0) else 0
-        g += c_ot // 16
-        self.g = g
-        c_part = c_ot // k
-        self.stride = stride
-
-        self.conv1 = nn.Conv2d(c_in, c_part, kernel_size=1, groups=g, bias=False)
-        self.bn1 = nn.BatchNorm2d(c_part)
-        self.relu1 = nn.ReLU(inplace=True)
-
-        self.conv2 = nn.Conv2d(c_part, c_part, kernel_size=3, stride=stride, padding=1, groups=c_part, bias=False)
-        # self.conv2 = build_weight(c_part, c_part, kernel_size, stride, dilation, transpose, output_padding, dropout, groups=c_part)[-1]
-        self.bn2 = nn.BatchNorm2d(c_part)
-        self.relu2 = nn.ReLU(inplace=True)
-
-        self.conv3 = nn.Conv2d(c_part, c_ot, kernel_size=1, groups=g, bias=False)
-        self.bn3 = nn.BatchNorm2d(c_ot)
-        self.relu3 = nn.ReLU(inplace=True)
-
-        if self.stride > 1:
-            if op_type == OpType.DOWN:
-                self.skip_path = nn.AvgPool2d(3, stride=stride, padding=1, count_include_pad=False)
-            else:
-                self.skip_path = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
-
-    def forward(self, x):
-        out = self.relu1(self.bn1(self.conv1(x)))
-        out = channel_shuffle(out, self.g)
-        out = self.relu2(self.bn2(self.conv2(out)))
-        out = self.bn3(self.conv3(out))
-        if self.stride > 1:
-            res = self.skip_path(x)
-        else:
-            res = x
-        out = self.relu3(out + res)
-        return out

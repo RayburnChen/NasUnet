@@ -13,7 +13,7 @@ class BuildCell(nn.Module):
         c_part = c_out // self.k
         if cell_type == 'down':
             # Note: the s0 size is twice than s1!
-            self.preprocess0 = nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False)  # suppose c_in0 == c_in1
+            self.preprocess0 = AdapterBlock(c_in0, c_in1, nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False))  # suppose c_in0 == c_in1
         else:
             self.preprocess0 = ShrinkBlock(c_in0, c_in1)
         self.preprocess1 = nn.Identity()
@@ -25,7 +25,7 @@ class BuildCell(nn.Module):
             op_names, idx = zip(*genotype.down)
             concat = genotype.down_concat
 
-        self.post_process = RectifyBlock(c_part * len(concat), c_out, cell_type=cell_type)
+        self.post_process = RectifyBlock(c_part * len(concat), c_out, c_in1, cell_type=cell_type)
         self.dropout_prob = dropout_prob
         self._compile(c_in1, c_part, cell_type, op_names, idx, concat)
 

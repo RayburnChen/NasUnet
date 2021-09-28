@@ -54,12 +54,12 @@ class Cell(nn.Module):
         c_part = c_out // self.k
         if self._cell_type == 'down':
             # Note: the s0 size is twice than s1!
-            self.preprocess0 = nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False)  # suppose c_in0 == c
+            self.preprocess0 = AdapterBlock(c_in0, c_in1, nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False))  # suppose c_in0 == c
         else:
             self.preprocess0 = ShrinkBlock(c_in0, c_in1)
         self.preprocess1 = nn.Identity()  # suppose c_in1 == c
 
-        self.post_process = RectifyBlock(c_part * self._meta_node_num, c_out, cell_type=cell_type)
+        self.post_process = RectifyBlock(c_part * self._meta_node_num, c_out, c_in1, cell_type=cell_type)
 
         self._ops = nn.ModuleList()
 
