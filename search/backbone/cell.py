@@ -4,46 +4,39 @@ from util.prim_ops_set import *
 
 class MixedOp(nn.Module):
 
-    def __init__(self, ch_in, ch_ot, op_type):
+    def __init__(self, c_in, c_out, op_type):
         super(MixedOp, self).__init__()
-        assert ch_in >= ch_ot, 'Not implemented'
         self._ops = nn.ModuleList()
         self._op_type = op_type
-        self.k = 2
-        self.mp = nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False)
-        self.c_part = ch_ot // self.k
-        self.ch_ot = ch_ot
+        self.k = 1
+        self.c_out = c_out
+        self.c_part = c_out // self.k
+
+        if OpType.DOWN == self._op_type:
+            # down cell needs pooling before concat
+            self.skip = nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False)
+        elif OpType.UP == self._op_type:
+            # up cell needs interpolate before concat
+            self.skip = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
+        else:
+            self.skip = nn.Identity()
 
         for pri in self._op_type.value['ops']:
-            op = OPS[pri](self.c_part, self.c_part, self._op_type, dp=0)
+            op = OPS[pri](c_in, self.c_part, self._op_type, dp=0)
             self._ops.append(op)
 
     def forward(self, x, weights_norm, weights_chg):
         # weights: i * 1 where i is the number of normal primitive operations
         # weights: j * 1 where j is the number of up primitive operations
         # weights: k * 1 where k is the number of down primitive operations
-
-        # < 1/k
-        xtemp1 = x[:, :  self.c_part, :, :]
-        # > 1/k
-        xtemp2 = x[:, self.c_part:self.ch_ot, :, :]
-
-        # down cell needs pooling before concat
-        # up cell needs interpolate before concat
-        if OpType.UP == self._op_type or OpType.DOWN == self._op_type:
-            temp1 = sum(w * op(xtemp1) for w, op in zip(weights_chg, self._ops))
-            if OpType.DOWN == self._op_type:
-                temp2 = self.mp(xtemp2)
-            else:
-                temp2 = F.interpolate(xtemp2, scale_factor=2, mode='nearest')
-        elif OpType.NORM == self._op_type:
-            temp1 = sum(w * op(xtemp1) for w, op in zip(weights_norm, self._ops))
-            temp2 = xtemp2
+        if OpType.NORM == self._op_type:
+            out = sum(w * op(x) for w, op in zip(weights_norm, self._ops))
         else:
-            raise NotImplementedError()
+            out = sum(w * op(x) for w, op in zip(weights_chg, self._ops))
 
-        ans = torch.cat([temp1, temp2], dim=1)
-        return channel_shuffle(ans, self.k)
+        if self.c_out - self.c_part > 0:
+            out = torch.cat([out, self.skip(x[:, self.c_part - self.c_out:, :, :])], dim=1)
+        return out
 
 
 class Cell(nn.Module):
@@ -57,7 +50,7 @@ class Cell(nn.Module):
         self._multiplier = meta_node_num
         self._input_num = 2
         self._cell_type = cell_type
-        self.k = 2
+        self.k = 4
         c_part = c_out // self.k
         if self._cell_type == 'down':
             # Note: the s0 size is twice than s1!
@@ -67,14 +60,14 @@ class Cell(nn.Module):
             self.preprocess0 = nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False)  # suppose c_in0 == c
         else:
             # self.preprocess0 = ConvGnReLU(c_in0, c, kernel_size=3)
-            self.preprocess0 = PreShrinkBlock(c_in0, c_in1)
+            self.preprocess0 = ShrinkBlock(c_in0, c_in1)
         # self.preprocess1 = ConvOps(c_in1, c, kernel_size=1, ops_order='weight_norm_act')
         self.preprocess1 = nn.Identity()  # suppose c_in1 == c
         # self.preprocess1 = ShrinkBlock(c_in1, c, k=1)
         # self.c_part = self.preprocess1.c_part
 
         # self.post_process = ConvGnReLU(c * self._meta_node_num, c, kernel_size=3)
-        self.post_process = ShrinkBlock(c_part * self._meta_node_num, c_out, cell_type=cell_type)
+        self.post_process = RectifyBlock(c_part * self._meta_node_num, c_out, cell_type=cell_type)
 
         self._ops = nn.ModuleList()
 

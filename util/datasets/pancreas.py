@@ -1,21 +1,29 @@
 from __future__ import print_function
+
 import os
-from .base import BaseDataset
-import pydicom
+
+from PIL import Image
+
 from util.augmentations import *
-from util.utils import create_class_weight
+from .base import BaseDataset
+import SimpleITK as sitk
+import numpy as np
+import os
+import nibabel as nib
+import imageio
 from PIL import Image
 
 
-class MoNuSAC(BaseDataset):
-    BASE_DIR, NUM_CLASS, CROP_SIZE = ('MoNuSAC/', 2, 256)
+class Pancreas(BaseDataset):
+
+    BASE_DIR, NUM_CLASS, CROP_SIZE = ('Task07_Pancreas/', 2, 256)
     IN_CHANNELS = 1
     CLASS_WEIGHTS = None
-    mean = [0.5336434],
-    std = [0.2037772]
+    mean = [0.07691266]
+    std = [0.18697876]
 
     def __init__(self, root, split='train', mode=None):
-        super(MoNuSAC, self).__init__(root, split, mode, norm={'mu': self.mean, 'std': self.std})
+        super(Pancreas, self).__init__(root, split, mode, norm={'mu': self.mean, 'std': self.std})
         self.root = os.path.expanduser(root)
         self.joint_transform = Compose([
             RandomTranslate(offset=(0.2, 0.1)),
@@ -24,20 +32,25 @@ class MoNuSAC(BaseDataset):
             RandomElasticTransform(alpha=1.5, sigma=0.07),
         ])
         base_path = os.path.join(self.root, self.BASE_DIR)
-        cleaned_image_path = os.path.join(base_path, 'MoNuSAC_cleaned', 'images')
-        cleaned_mask_path = os.path.join(base_path, 'MoNuSAC_cleaned', 'masks')
+        image_path = os.path.join(base_path, 'imagesTr')
+        mask_path = os.path.join(base_path, 'labelsTr')
+        # self.go_through_gz(image_path, False)
+        # self.go_through_gz(mask_path, True)
+
         self.data_info = []
 
         if mode in ['train', 'val']:
-            for root, dirs, files in os.walk(cleaned_mask_path):
+            for root, dirs, files in os.walk(image_path):
                 path = root.split(os.sep)
                 for file in files:
-                    # mask
-                    # ../train_tiny_data/imgseg/MoNuSAC/MoNuSAC_cleaned/masks/TCGA-5P-A9K0-01Z-00-DX1_1_1.png
-                    mask_dir = os.path.join(cleaned_mask_path, file)
+                    if '.nii.gz' in file:
+                        continue
                     # image
-                    # ../train_tiny_data/imgseg/MoNuSAC/MoNuSAC_cleaned/images/TCGA-5P-A9K0-01Z-00-DX1_1_1.png
-                    image_dir = os.path.join(cleaned_image_path, file)
+                    # '../train_tiny_data/imgseg/Task07_Pancreas/imagesTr/pancreas_001/0.png'
+                    image_dir = os.path.join(image_path, path[-1], file)
+                    # mask
+                    # '../train_tiny_data/imgseg/Task07_Pancreas/labelsTr/pancreas_001/0.png'
+                    mask_dir = os.path.join(mask_path, path[-1], file)
                     self.data_info.append((image_dir, mask_dir))
 
             if len(self.data_info) == 0:
@@ -98,5 +111,28 @@ class MoNuSAC(BaseDataset):
         mean.div_(len(self.data_info))
         std.div_(len(self.data_info))
         return list(mean.numpy()), list(std.numpy())
+
+    def go_through_gz(self, gz_folder, is_label):
+        for root, dirs, files in os.walk(gz_folder):
+            path = root.split(os.sep)
+            for file in files:
+                if '.nii.gz' not in file:
+                    continue
+                new_folder = os.path.join(gz_folder, file.split('.')[0])
+                if not os.path.exists(new_folder):
+                    os.mkdir(new_folder)
+                gz = os.path.join(gz_folder, file)
+                self.nii_to_image(gz, new_folder, is_label)
+
+    def nii_to_image(self, img_path: str, write_path, is_label):
+        img = nib.load(img_path)
+        for i in range(img.shape[-1]):
+            img_arr = img.dataobj[:, :, i]
+            if is_label:
+                img_arr = img_arr.astype('int')
+                img_arr[img_arr == 2] = 0
+                img_arr = 255 * img_arr
+            im = Image.fromarray(img_arr).convert("L")
+            im.save(os.path.join(write_path, str(i)+'.png'), format="png")
 
 

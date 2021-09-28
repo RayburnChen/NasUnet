@@ -11,10 +11,7 @@ searching:
     init_channels: 32
     depth: 5
     epoch: 1000
-    batch_size: 17
-#    batch_size: 12
-#    batch_size: 7
-#    batch_size: 3
+    batch_size: 20
     report_freq: 10
     n_workers: 2
     alpha_begin: 15
@@ -32,14 +29,9 @@ searching:
         lr: 0.025
         weight_decay: 3.0e-4
         momentum: 0.9
-#        name: 'adabound'
-#        lr: 1.0e-3
-#        weight_decay: 5.0e-4
     arch_optimizer:
         name: 'adam'
-#        lr: 3.0e-4
         lr: 1.0e-4
-#        weight_decay: 5.0e-3
         weight_decay: 1.0e-3
         betas: !!python/tuple [ 0.5, 0.999 ]
     loss:
@@ -64,15 +56,10 @@ training:
         lr: 6.0e-3
         weight_decay: 5.0e-4
         momentum: 0.9
-#        name: 'adabound'
-#        lr: 1.0e-3
-#        weight_decay: 5.0e-4
     loss:
         name: 'dice_ce'
     backbone:
     lr_schedule:
         name: 'cos'
         T_max: 100
-#        name: 'exp_lr'
-#        gamma: 0.995
     resume:

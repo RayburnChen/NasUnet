@@ -1,17 +1,21 @@
 from torchvision.datasets import *
-from .base import *
-from .coco import COCOSegmentation
+
 from .ade20k import ADE20KSegmentation
-from .monusac import MoNuSAC
-from .pascal_voc import VOCSegmentation
-from .pascal_aug import VOCAugSegmentation
-from .pcontext import ContextSegmentation
-from .minc import MINCDataset
-from .ultrasound_nerve import UltraNerve
+from .base import *
 from .bladder import Bladder
-from .chaos import CHAOS
-from .promise12 import Promise12
 from .camvid import CamVid
+from .chaos import CHAOS
+from .coco import COCOSegmentation
+from .heart import Heart
+from .minc import MINCDataset
+from .monusac import MoNuSAC
+from .pancreas import Pancreas
+from .pascal_aug import VOCAugSegmentation
+from .pascal_voc import VOCSegmentation
+from .pcontext import ContextSegmentation
+from .promise12 import Promise12
+from .spleen import Spleen
+from .ultrasound_nerve import UltraNerve
 
 datasets = {
     'coco': COCOSegmentation,
@@ -27,6 +31,9 @@ datasets = {
     'promise12': Promise12,
     'camvid': CamVid,
     'monusac': MoNuSAC,
+    'heart': Heart,
+    'pancreas': Pancreas,
+    'spleen': Spleen,
 }
 
 acronyms = {
@@ -44,6 +51,9 @@ acronyms = {
     'promise12': 'promise12',
     'camvid': 'camvid',
     'monusac': 'monusac',
+    'heart': 'heart',
+    'pancreas': 'pancreas',
+    'spleen': 'spleen',
 }
 
 dir = '../train_tiny_data/imgseg/'

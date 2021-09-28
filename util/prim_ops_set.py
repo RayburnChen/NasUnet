@@ -1,16 +1,17 @@
 from enum import Enum
 from typing import Optional
 
+import torch
 import torch.nn as nn
 
 from util.utils import *
 
 OPS = {
-    'none': lambda c_in, c_ot, op_type, dp: ZeroOp(stride=1),
-    'identity': lambda c_in, c_ot, op_type, dp: nn.Identity(),
-    'avg_pool': lambda c_in, c_ot, op_type, dp: build_ops('avg_pool', op_type),
-    'max_pool': lambda c_in, c_ot, op_type, dp: build_ops('max_pool', op_type),
-    'up_sample': lambda c_in, c_ot, op_type, dp: nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
+    'none': lambda c_in, c_ot, op_type, dp: AdapterBlock(c_in, c_ot, ZeroOp(stride=1)),
+    'identity': lambda c_in, c_ot, op_type, dp: AdapterBlock(c_in, c_ot, nn.Identity()),
+    'avg_pool': lambda c_in, c_ot, op_type, dp: build_ops('avg_pool', op_type, c_in, c_ot),
+    'max_pool': lambda c_in, c_ot, op_type, dp: build_ops('max_pool', op_type, c_in, c_ot),
+    'up_sample': lambda c_in, c_ot, op_type, dp: AdapterBlock(c_in, c_ot, nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)),
 
     'conv': lambda c_in, c_ot, op_type, dp: build_ops('conv', op_type, c_in, c_ot, dp=dp),
     'dil_conv_2': lambda c_in, c_ot, op_type, dp: build_ops('dil_conv_2', op_type, c_in, c_ot, dp=dp),
@@ -58,9 +59,9 @@ def build_ops(op_name, op_type: OpType, c_in: Optional[int] = None, c_ot: Option
     use_transpose = True if op_type == OpType.UP else False
     output_padding = 1 if op_type == OpType.UP else 0
     if op_name == 'avg_pool':
-        return nn.AvgPool2d(3, stride=stride, padding=1, count_include_pad=False)
+        return AdapterBlock(c_in, c_ot, nn.AvgPool2d(3, stride=stride, padding=1, count_include_pad=False))
     elif op_name == 'max_pool':
-        return nn.MaxPool2d(3, stride=stride, padding=1)
+        return AdapterBlock(c_in, c_ot, nn.MaxPool2d(3, stride=stride, padding=1))
     elif op_name == 'conv':
         return ConvGnReLU(c_in, c_ot, stride=stride, transpose=use_transpose, output_padding=output_padding, dropout=dp)
     elif op_name == 'se_conv':
@@ -131,10 +132,6 @@ def build_weight(c_in, c_ot, kernel_size, stride, dilation, use_transpose, outpu
 
 def build_norm(c_ot, affine):
     return nn.BatchNorm2d(c_ot, affine=affine)
-    # c_per_g = 16
-    # group = 1 if (c_ot % c_per_g > 0) else 0
-    # group += c_ot // c_per_g
-    # return nn.GroupNorm(group, c_ot, affine=affine)
 
 
 def build_activation():
@@ -151,6 +148,25 @@ class ZeroOp(nn.Module):
         if self.stride == 1:
             return x.mul(0.)
         return x[:, :, ::self.stride, ::self.stride].mul(0.)
+
+
+class AdapterBlock(nn.Module):
+
+    def __init__(self, c_in, c_ot, module):
+        super().__init__()
+        self.c_in = c_in
+        self.c_ot = c_ot
+        self.module = module
+
+    def forward(self, x):
+        if self.c_in == self.c_ot:
+            return self.module(x)
+        elif self.c_in > self.c_ot:
+            x = x[:, :self.c_ot, :, :]
+            return self.module(x)
+        else:
+            x = torch.cat([x, x[:, :self.c_ot - self.c_in, :, :]], dim=1)
+            return self.module(x)
 
 
 class SEBlock(nn.Module):
@@ -173,7 +189,7 @@ class SEBlock(nn.Module):
         return x * y.expand_as(x)
 
 
-class PreShrinkBlock(nn.Module):
+class ShrinkBlock(nn.Module):
 
     def __init__(self, c_in, c_ot):
         super().__init__()
@@ -189,7 +205,7 @@ class PreShrinkBlock(nn.Module):
         return out
 
 
-class ShrinkBlock(nn.Module):
+class RectifyBlock(nn.Module):
 
     def __init__(self, c_in, c_ot, cell_type='down'):
         super().__init__()
