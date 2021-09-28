@@ -233,7 +233,7 @@ class Network(object):
 
             self.scheduler.step()
 
-            self.logger.info('=> Epoch {}, lr {}'.format(self.epoch, self.scheduler.get_lr()[-1]))
+            self.logger.info('=> Epoch {}, lr {}'.format(self.epoch, self.scheduler.get_last_lr()))
 
             # train and search the model
             self.train()
@@ -301,7 +301,7 @@ class Network(object):
 
             predicts = self.model(input)
 
-            # self.logger.info('GPU memory total:{}, reserved:{}, allocated:{}, waiting:{}'.format(*gpu_memory()))
+            self.logger.info('GPU memory total:{}, reserved:{}, allocated:{}, waiting:{}'.format(*gpu_memory()))
 
             train_loss = self.criterion(predicts, target)
 

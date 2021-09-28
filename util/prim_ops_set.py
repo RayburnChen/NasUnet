@@ -108,11 +108,10 @@ class DepSepConv(nn.Sequential):
                  affine=True, dropout=0):
         depth_conv = build_weight(c_in, c_in, kernel_size, stride, dilation, transpose, output_padding, dropout, groups=c_in)
         depth_norm = build_norm(c_in, affine)
-        depth_act = build_activation()
         point_conv = build_weight(c_in, c_ot, 1, 1, 1, False, 0, dropout)
         point_norm = build_norm(c_ot, affine)
-        point_act = build_activation()
-        super().__init__(*depth_conv, depth_norm, depth_act, *point_conv, point_norm, point_act)
+        act = build_activation()
+        super().__init__(*depth_conv, depth_norm, act, *point_conv, point_norm, act)
 
 
 def build_weight(c_in, c_ot, kernel_size, stride, dilation, use_transpose, output_padding, dropout_rate, groups=1):
