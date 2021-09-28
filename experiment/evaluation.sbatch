@@ -69,9 +69,13 @@ python -V
 #conda install --file requirements.txt
 
 sleep 5
-python ./train.py --config ../configs/nas_unet/nas_unet_pancreas.yml --model nasunet --ft --loss dice_ce --depth 5 --batch_size 36 --genotype "Genotype(down=[('dil_conv_3', 0), ('dil_conv_3', 1), ('dil_conv_3', 1), ('dil_conv_3', 2)], down_concat=range(2, 4), up=[('dil_conv_3', 1), ('dil_conv_3', 0), ('dil_conv_3', 0), ('dil_conv_3', 2)], up_concat=range(2, 4), gamma=[1, 0, 0, 1, 1, 1])"
-#python ./train.py --config ../configs/nas_unet/nas_unet_monusac.yml --model nasunet --loss dice_ce --batch_size 14
-#python ./train.py --config ../configs/nas_unet/nas_unet_promise12.yml --model unet --loss dice_ce
+python ./train.py --config ../configs/nas_unet/nas_unet_pancreas.yml --model nasunet --loss dice_ce --depth 5 --batch_size 36 --ft --genotype "Genotype(down=[('dil_conv_3', 0), ('dil_conv_3', 1), ('dil_conv_3', 1), ('dil_conv_3', 2)], down_concat=range(2, 4), up=[('dil_conv_3', 1), ('dil_conv_3', 0), ('dil_conv_3', 0), ('dil_conv_3', 2)], up_concat=range(2, 4), gamma=[1, 0, 0, 1, 1, 1])"
+#python ./train.py --config ../configs/nas_unet/nas_unet_chaos.yml --model nasunet --loss dice_ce --depth 5 --batch_size 36
+#python ./train.py --config ../configs/nas_unet/nas_unet_promise12.yml --model nasunet --loss dice_ce --depth 5 --batch_size 36
+#python ./train.py --config ../configs/nas_unet/nas_unet_monusac.yml --model nasunet --loss dice_ce --depth 5 --batch_size 36
+#python ./train.py --config ../configs/nas_unet/nas_unet_spleen.yml --model nasunet --loss dice_ce --depth 5 --batch_size 36
+#python ./train.py --config ../configs/nas_unet/nas_unet_heart.yml --model nasunet --loss dice_ce --depth 5 --batch_size 36
+#python ./train.py --config ../configs/nas_unet/nas_unet_pancreas.yml --model nasunet --loss dice_ce --depth 5 --batch_size 36
 
 nvidia-smi
 # deviceQuery
