@@ -67,8 +67,9 @@ python -V
 #conda install --file requirements.txt
 
 sleep 5
-python ./search_cell.py --config ../configs/nas_unet/nas_unet_promise12.yml --batch_size 20 --meta_node_num 2
-#python ./search_cell.py --config ../configs/nas_unet/nas_unet_monusac.yml --batch_size 14 --meta_node_num 3
+python ./search_cell.py --config ../configs/nas_unet/nas_unet_promise12.yml --batch_size 12 --meta_node_num 3
+#python ./search_cell.py --config ../configs/nas_unet/nas_unet_promise12.yml --batch_size 18 --meta_node_num 2
+#python ./search_cell.py --config ../configs/nas_unet/nas_unet_monusac.yml --batch_size 12 --meta_node_num 3
 
 nvidia-smi
 # deviceQuery

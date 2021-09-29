@@ -189,7 +189,7 @@ class SearchNetwork(object):
             # update scheduler
             self.scheduler.step()
             self.logger.info('Epoch %d / %d lr %e', self.epoch,
-                             self.cfg['searching']['epoch'], self.scheduler.get_last_lr())
+                             self.cfg['searching']['epoch'], self.scheduler.get_last_lr()[-1])
 
             # get genotype
             genotype = self.model.genotype()

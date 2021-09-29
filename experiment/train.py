@@ -233,7 +233,7 @@ class Network(object):
 
             self.scheduler.step()
 
-            self.logger.info('=> Epoch {}, lr {}'.format(self.epoch, self.scheduler.get_last_lr()))
+            self.logger.info('=> Epoch {}, lr {}'.format(self.epoch, self.scheduler.get_last_lr()[-1]))
 
             # train and search the model
             self.train()
