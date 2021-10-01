@@ -9,9 +9,9 @@ from search.backbone.cell import Cell
 
 class Head(nn.Module):
 
-    def __init__(self, meta_node_num, c_in0, c_in1, nclass):
+    def __init__(self, meta_node_num, double_down, c_in0, c_in1, nclass):
         super(Head, self).__init__()
-        self.up_cell = Cell(meta_node_num, c_in0, c_in1, c_in1, cell_type='up')
+        self.up_cell = Cell(meta_node_num, double_down, c_in0, c_in1, c_in1, cell_type='up')
         self.segmentation_head = Conv(c_in1, nclass, kernel_size=3)
 
     def forward(self, s0, ot, weights_up_norm, weights_up, betas_up):
@@ -54,7 +54,7 @@ class SearchULikeCNN(nn.Module):
             else:
                 c_curr = int(double_down * c_curr)
                 filters = [c_in0, c_in1, c_curr, 'down']
-                down_cell = Cell(meta_node_num, c_in0, c_in1, c_curr, cell_type='down')
+                down_cell = Cell(meta_node_num, double_down, c_in0, c_in1, c_curr, cell_type='down')
                 down_f.append(filters)
                 down_block += [down_cell]
                 c_in0, c_in1 = c_in1, c_curr  # down_cell._multiplier
@@ -71,7 +71,7 @@ class SearchULikeCNN(nn.Module):
                 head_in0 = sum([num_filters[k][j][2] for k in range(i)])  # up_cell._multiplier
                 head_in1 = head_down  # up_cell._multiplier
                 filters = [head_in0, head_in1, head_curr, 'up']
-                up_cell = Cell(meta_node_num, head_in0, head_in1, head_curr, cell_type='up')
+                up_cell = Cell(meta_node_num, double_down, head_in0, head_in1, head_curr, cell_type='up')
                 up_f.append(filters)
                 up_block += [up_cell]
             num_filters.append(up_f)
@@ -81,7 +81,7 @@ class SearchULikeCNN(nn.Module):
 
         c_in0 = c
         c_in1 = num_filters[-1][0][2]
-        self.head_block += [Head(meta_node_num, c_in0, c_in1, nclass)]
+        self.head_block += [Head(meta_node_num, double_down, c_in0, c_in1, nclass)]
 
         if use_softmax_head:
             self.softmax = nn.LogSoftmax(dim=1)

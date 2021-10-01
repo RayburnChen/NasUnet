@@ -155,6 +155,19 @@ def build_activation():
     return nn.ReLU(inplace=True)
 
 
+def build_rectify(c_in, c_ot, cell_type):
+    if cell_type == 'up':
+        if c_in == c_ot:
+            return nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
+        else:
+            return nn.Sequential(nn.ConvTranspose2d(c_in, c_ot, kernel_size=1, stride=2, output_padding=1, bias=False), build_norm(c_ot, True))
+    else:
+        if c_in == c_ot:
+            return nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False)
+        else:
+            return nn.Sequential(nn.Conv2d(c_in, c_ot, kernel_size=1, stride=2, bias=False), build_norm(c_ot, True))
+
+
 class ZeroOp(nn.Module):
 
     def __init__(self, stride):
@@ -174,16 +187,16 @@ class AdapterBlock(nn.Module):
         self.c_in = c_in
         self.c_ot = c_ot
         self.module = module
+        if self.c_in != self.c_ot:
+            self.conv = nn.Conv2d(c_in, c_ot, kernel_size=1, bias=False)
+            self.norm = build_norm(c_ot, True)
 
     def forward(self, x):
-        if self.c_in == self.c_ot:
-            return self.module(x)
-        elif self.c_in > self.c_ot:
-            x = x[:, :self.c_ot, :, :]
-            return self.module(x)
-        else:
-            x = torch.cat([x, x[:, :self.c_ot - self.c_in, :, :]], dim=1)
-            return self.module(x)
+        out = self.module(x)
+        if self.c_in != self.c_ot:
+            out = self.conv(out)
+            out = self.norm(out)
+        return out
 
 
 class SEBlock(nn.Module):
@@ -231,11 +244,7 @@ class RectifyBlock(nn.Module):
         self.conv = nn.Conv2d(c_in, c_ot, kernel_size=3, padding=1, bias=False)
         self.norm = build_norm(c_ot, True)
         self.act = build_activation()
-
-        if self.cell_type == 'up':
-            self.skip_path = AdapterBlock(c_res, c_ot, nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False))
-        else:
-            self.skip_path = AdapterBlock(c_res, c_ot, nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False))
+        self.skip_path = build_rectify(c_res, c_ot, self.cell_type)
 
     def forward(self, x, residual):
         out = self.conv(x)

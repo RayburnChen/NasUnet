@@ -41,7 +41,7 @@ class MixedOp(nn.Module):
 
 class Cell(nn.Module):
 
-    def __init__(self, meta_node_num, c_in0, c_in1, c_out, cell_type):
+    def __init__(self, meta_node_num, double_down, c_in0, c_in1, c_out, cell_type):
         super(Cell, self).__init__()
         self.c_in0 = c_in0
         self.c_in1 = c_in1
@@ -51,12 +51,15 @@ class Cell(nn.Module):
         self._input_num = 2
         self._cell_type = cell_type
         self.k = 4
-        c_part = c_out // self.k
         if self._cell_type == 'down':
             # Note: the s0 size is twice than s1!
-            self.preprocess0 = AdapterBlock(c_in0, c_in1, nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False))  # suppose c_in0 == c
+            self.preprocess0 = build_rectify(c_in0, c_in1, self._cell_type)
+            c_part = c_out // double_down
+            c_part = c_part // self.k
         else:
             self.preprocess0 = ShrinkBlock(c_in0, c_in1)
+            c_part = c_out
+            c_part = c_part // self.k
         self.preprocess1 = nn.Identity()  # suppose c_in1 == c
 
         self.post_process = RectifyBlock(c_part * self._meta_node_num, c_out, c_in1, cell_type=cell_type)

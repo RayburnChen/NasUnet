@@ -181,6 +181,7 @@ class SearchNetwork(object):
         self.metric_val = SegmentationMetric(self.n_classes)
         self.train_loss_meter = AverageMeter()
         self.val_loss_meter = AverageMeter()
+        self.geno_type = None
         run_start = time.time()
 
         for epoch in range(self.start_epoch, self.cfg['searching']['epoch']):
@@ -214,7 +215,7 @@ class SearchNetwork(object):
                 self.logger.info('Current patience :{}'.format(self.patience))
 
                 if self.patience >= self.cfg['searching']['max_patience']:
-                    self.logger.info('Reach the max patience! \n best genotype {}'.format(genotype))
+                    self.logger.info('Reach the max patience! \n best genotype {}'.format(self.geno_type))
                     break
 
             # train and search the model
@@ -249,6 +250,7 @@ class SearchNetwork(object):
         # export scalar data to JSON for external processing
         self.writer.export_scalars_to_json(self.save_tbx_log + "/all_scalars.json")
         self.writer.close()
+        self.logger.info('End! \n best genotype {}'.format(self.geno_type))
 
     def train(self):
         self.model.train()

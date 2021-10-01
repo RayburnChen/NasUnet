@@ -286,6 +286,9 @@ class Network(object):
         # export scalar data to JSON for external processing
         self.writer.export_scalars_to_json(self.save_tbx_log + "/all_scalars.json")
         self.writer.close()
+        self.logger.info('Best loss {}, pixAcc {}, mIoU {}, dice {}'.format(
+                self.best_loss, self.best_pixAcc, self.best_mIoU, self.best_dice
+            ))
         self.logger.info('Cost time: {}'.format(calc_time(self.dur_time + time.time() - run_start)))
         self.logger.info('Log dir in : {}'.format(self.save_path))
 

@@ -7,15 +7,15 @@ from .resnet import BasicBlock
 class BuildCell(nn.Module):
     """Build a cell from genotype"""
 
-    def __init__(self, genotype, c_in0, c_in1, c_out, cell_type, dropout_prob=0):
+    def __init__(self, genotype, double_down, c_in0, c_in1, c_out, cell_type, dropout_prob=0):
         super(BuildCell, self).__init__()
-        self.k = 1
-        c_part = c_out // self.k
         if cell_type == 'down':
             # Note: the s0 size is twice than s1!
-            self.preprocess0 = AdapterBlock(c_in0, c_in1, nn.AvgPool2d(3, stride=2, padding=1, count_include_pad=False))  # suppose c_in0 == c_in1
+            self.preprocess0 = build_rectify(c_in0, c_in1, cell_type)
+            c_part = c_out // double_down
         else:
             self.preprocess0 = ShrinkBlock(c_in0, c_in1)
+            c_part = c_out
         self.preprocess1 = nn.Identity()
 
         if cell_type == 'up':
@@ -70,9 +70,9 @@ class BuildCell(nn.Module):
 
 class Head(nn.Module):
 
-    def __init__(self, genotype, c_in0, c_in1, nclass):
+    def __init__(self, genotype, double_down, c_in0, c_in1, nclass):
         super(Head, self).__init__()
-        self.up_cell = BuildCell(genotype, c_in0, c_in1, c_in1, cell_type='up')
+        self.up_cell = BuildCell(genotype, double_down, c_in0, c_in1, c_in1, cell_type='up')
         self.segmentation_head = Conv(c_in1, nclass, kernel_size=3)
 
     def forward(self, s0, ot):
@@ -115,7 +115,7 @@ class NasUnet(BaseNet):
             else:
                 c_curr = int(double_down * c_curr)
                 filters = [c_in0, c_in1, c_curr, 'down']
-                down_cell = BuildCell(genotype, c_in0, c_in1, c_curr, cell_type='down', dropout_prob=dropout_prob)
+                down_cell = BuildCell(genotype, double_down, c_in0, c_in1, c_curr, cell_type='down', dropout_prob=dropout_prob)
                 down_f.append(filters)
                 down_block += [down_cell]
                 c_in0, c_in1 = c_in1, c_curr
@@ -137,7 +137,7 @@ class NasUnet(BaseNet):
                     head_in0 = sum([num_filters[k][j][2] for k in range(i)])  # up_cell._multiplier
                     head_in1 = head_down  # up_cell._multiplier
                     filters = [head_in0, head_in1, head_curr, 'up']
-                    up_cell = BuildCell(genotype, head_in0, head_in1, head_curr, cell_type='up',
+                    up_cell = BuildCell(genotype, double_down, head_in0, head_in1, head_curr, cell_type='up',
                                         dropout_prob=dropout_prob)
                 up_f.append(filters)
                 up_block += [up_cell]
@@ -148,7 +148,7 @@ class NasUnet(BaseNet):
 
         c_in0 = c
         c_in1 = num_filters[-1][0][2]
-        self.head_block.append(Head(genotype, c_in0, c_in1, nclass))
+        self.head_block.append(Head(genotype, double_down, c_in0, c_in1, nclass))
 
     def forward(self, x):
         cell_out = []
