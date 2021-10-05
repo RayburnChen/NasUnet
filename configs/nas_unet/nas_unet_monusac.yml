@@ -10,12 +10,12 @@ data:
 searching:
     init_channels: 32
     depth: 5
-    epoch: 500
+    epoch: 200
     batch_size: 7
     report_freq: 10
     n_workers: 2
     alpha_begin: 15
-    max_patience: 30
+    max_patience: 10
     gpu: True
     multi_gpus: True
     sharing_normal: False

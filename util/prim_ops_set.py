@@ -244,12 +244,13 @@ class RectifyBlock(nn.Module):
         self.conv = nn.Conv2d(c_in, c_ot, kernel_size=3, padding=1, bias=False)
         self.norm = build_norm(c_ot, True)
         self.act = build_activation()
-        self.skip_path = build_rectify(c_res, c_ot, self.cell_type)
+        # self.skip_path = build_rectify(c_res, c_ot, self.cell_type)
 
-    def forward(self, x, residual):
+    def forward(self, x):
         out = self.conv(x)
         out = self.norm(out)
-        out = self.act(out + self.skip_path(residual))
+        # out = self.act(out + self.skip_path(residual))
+        out = self.act(out)
         return out
 
 

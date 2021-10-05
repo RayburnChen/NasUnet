@@ -112,7 +112,7 @@ class Cell(nn.Module):
             offset += len(states)
             states.append(s)
 
-        return self.post_process(torch.cat(states[-self._multiplier:], dim=1), in1)
+        return self.post_process(torch.cat(states[-self._multiplier:], dim=1))
 
 
 
